@@ -1,9 +1,10 @@
-#include "bversion.h"
-#if BUILDING_GCC_VERSION >= 6000
-#include "gcc-plugin.h"
+
+#if TARGET_CXX_VERSION >= 6
+#include <gcc-plugin.h>
 #else
-#include "plugin.h"
+#include <plugin.h>
 #endif
+
 #include <tree.h>
 #include <print-tree.h>
 #include <stdio.h>
@@ -33,19 +34,19 @@ static struct attribute_spec user_attr =
 	.decl_required = true,
 	.type_required = false,
 	.function_type_required = false,
-#if BUILDING_GCC_VERSION >= 8000 
-        .affects_type_identity = false,
-        .handler = handle_nexmon_place_at_attribute,
+#if TARGET_CXX_VERSION >= 6
+	.affects_type_identity = false,
+	.handler = handle_nexmon_place_at_attribute,
 #else
-        .handler = handle_nexmon_place_at_attribute,
-        .affects_type_identity = false,
+	.handler = handle_nexmon_place_at_attribute,
+	.affects_type_identity = false,
 #endif
 };
 
 static tree
 handle_nexmon_place_at_attribute(tree *node, tree name, tree args, int flags, bool *no_add_attr)
 {
-	//tree itr; 
+	//tree itr;
 	tree tmp_tree;
 
 	const char *decl_name = IDENTIFIER_POINTER(DECL_NAME(*node));
@@ -138,7 +139,7 @@ handle_pragma_targetregion(cpp_reader *dummy)
  	}
 }
 
-static void 
+static void
 register_pragmas(void *event_data, void *data)
 {
 	c_register_pragma("NEXMON", "targetregion", handle_pragma_targetregion);
