@@ -1,4 +1,4 @@
-all: flash_patch_extractor ucode_extractor b43/assembler/b43-asm.bin b43/disassembler/b43-dasm b43-v2/assembler/b43-asm.bin b43-v2/disassembler/b43-dasm b43-v3/assembler/b43-asm.bin b43-v3/disassembler/b43-dasm
+all: flash_patch_extractor ucode_extractor b43/assembler/b43-asm.bin b43/disassembler/b43-dasm b43-v2/assembler/b43-asm.bin b43-v2/disassembler/b43-dasm b43-v3/assembler/b43-asm.bin b43-v3/disassembler/b43-dasm gcc-nexmon-plugin
 
 b43-v3/assembler/b43-asm.bin: FORCE
 	@printf "\033[0;31m  BUILDING\033[0m %s\n" $@
@@ -31,6 +31,12 @@ flash_patch_extractor: FORCE
 ucode_extractor: FORCE
 	@printf "\033[0;31m  BUILDING\033[0m %s\n" $@
 	$(Q)make -C $@
+
+gcc-nexmon-plugin: FORCE
+ifeq ($(shell uname -m),$(filter $(shell uname -m), armv6l armv7l aarch64))
+	@printf "\033[0;31m  BUILDING\033[0m %s\n" $@-arm
+	$(Q)make -C $@-arm
+endif
 
 FORCE:
 	

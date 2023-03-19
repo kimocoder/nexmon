@@ -1,4 +1,5 @@
-#include <plugin.h>
+#include <gcc-plugin.h>
+#include <plugin-version.h>
 #include <tree.h>
 #include <print-tree.h>
 #include <stdio.h>
@@ -28,8 +29,13 @@ static struct attribute_spec user_attr =
 	.decl_required = true,
 	.type_required = false,
 	.function_type_required = false,
+#if (GCCPLUGIN_VERSION >= 8000)
+	.affects_type_identity = false,
+	.handler = handle_nexmon_place_at_attribute,
+#else
 	.handler = handle_nexmon_place_at_attribute,
 	.affects_type_identity = false,
+#endif
 };
 
 static tree
