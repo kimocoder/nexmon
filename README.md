@@ -95,14 +95,7 @@ qca9500<sup>4</sup>       | 4-1-0_55             | TP-Link Talon AD7200      | C
 # Steps to create your own firmware patches
 
 ## Build patches for bcm4330, bcm4339 and bcm4358 using a x86 computer running Linux (e.g. Ubuntu 16.04)
-* Install some dependencies: `sudo apt-get install git gawk qpdf adb flex bison`
-* **Only necessary for x86_64 systems**, install i386 libs: 
-
-  ```
-  sudo dpkg --add-architecture i386
-  sudo apt-get update
-  sudo apt-get install libc6:i386 libncurses5:i386 libstdc++6:i386
-  ```
+* Install some dependencies: `sudo apt-get install git gawk qpdf adb flex bison make g++ gcc-arm-none-eabi libgmp3-dev`
 * Clone our repository: `git clone https://github.com/seemoo-lab/nexmon.git`
 * In the root directory of the repository: `cd nexmon`
   * Setup the build environment: `source setup_env.sh`

@@ -36,6 +36,9 @@ gcc-nexmon-plugin: FORCE
 ifeq ($(shell uname -m),$(filter $(shell uname -m), armv6l armv7l aarch64))
 	@printf "\033[0;31m  BUILDING\033[0m %s\n" $@-arm
 	$(Q)make -C $@-arm
+else ifeq ($(shell uname -m),$(filter $(shell uname -m), x86_64))
+	@printf "\033[0;31m  BUILDING\033[0m %s\n" $@
+	$(Q)make -C $@
 endif
 
 FORCE:
