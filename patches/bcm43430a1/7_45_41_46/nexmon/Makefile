@@ -179,6 +179,7 @@ endif
 backup-firmware:
 ifeq ($(shell uname -m),$(filter $(shell uname -m), armv6l armv7l aarch64))
 	$(Q)cp /lib/firmware/brcm/brcmfmac43430-sdio.bin brcmfmac43430-sdio.bin.orig
+	$(Q)cp /lib/firmware/brcm/brcmfmac43436s-sdio.bin brcmfmac43436s-sdio.bin.bin.orig 2>/dev/null || true
 	$(Q)cp /lib/firmware/brcm/brcmfmac43430-sdio.clm_blob brcmfmac43430-sdio.clm_blob 2>/dev/null || true
 	$(Q)cp /lib/firmware/brcm/brcmfmac43430-sdio.raspberrypi,3-model-b.clm_blob brcmfmac43430-sdio.raspberrypi,3-model-b.clm_blob 2>/dev/null || true
 else
@@ -189,6 +190,7 @@ install-firmware: brcmfmac43430-sdio.bin brcmfmac.ko
 ifeq ($(shell uname -m),$(filter $(shell uname -m), armv6l armv7l aarch64))
 	@printf "\033[0;31m  COPYING\033[0m brcmfmac43430-sdio.bin => /lib/firmware/brcm/brcmfmac43430-sdio.bin\n"
 	$(Q)cp brcmfmac43430-sdio.bin /lib/firmware/brcm/brcmfmac43430-sdio.bin
+	$(Q)cp brcmfmac43430-sdio.bin /lib/firmware/brcm/brcmfmac43436s-sdio.bin
 	$(Q)rm -rf /lib/firmware/brcm/brcmfmac43430-sdio.clm_blob
 	$(Q)rm -rf /lib/firmware/brcm/brcmfmac43430-sdio.raspberrypi,3-model-b.clm_blob
 ifneq ("$(wildcard $(DRIVER_FOLDER_NAME)/brcmfmac.ko)", "")
