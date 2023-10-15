@@ -29,7 +29,7 @@ CFLAGS= \
 	-DVERSION_PTR_3=$(VERSION_PTR_3) \
 	-DGIT_VERSION=\"$(GIT_VERSION)\" \
 	-DBUILD_NUMBER=\"$$(cat BUILD_NUMBER)\" \
-	-Wall -Werror -O2 -nostdlib -nostartfiles -ffreestanding -mthumb -march=$(NEXMON_ARCH) \
+	-Wall -Werror -O2 -nostdlib -nostartfiles -ffreestanding -mthumb -Wno-address-of-packed-member -fno-align-functions -march=$(NEXMON_ARCH) \
 	-ffunction-sections -fdata-sections \
 	-I$(NEXMON_ROOT)/patches/include \
 	-Iinclude \
