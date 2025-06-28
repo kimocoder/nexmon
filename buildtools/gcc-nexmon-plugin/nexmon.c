@@ -1,5 +1,8 @@
 #include <gcc-plugin.h>
 #include <plugin-version.h>
+#if (GCCPLUGIN_VERSION < 6000)
+#include <plugin.h>
+#endif
 #include <tree.h>
 #include <print-tree.h>
 #include <stdio.h>
