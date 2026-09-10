@@ -281,6 +281,39 @@ parse_opt(int key, char *arg, struct argp_state *state)
         case 'V':
             revinfo = true;
             break;
+
+        case ARGP_KEY_ARG:
+            if (get_chanspec && !set_chanspec) {
+                get_chanspec = false;
+                set_chanspec = true;
+                set_chanspec_value = arg;
+                break;
+            }
+            if (get_monitor && !set_monitor) {
+                get_monitor = false;
+                set_monitor = true;
+                set_monitor_value = strtol(arg, NULL, 0);
+                break;
+            }
+            if (get_promisc && !set_promisc) {
+                get_promisc = false;
+                set_promisc = true;
+                set_promisc_value = strtol(arg, NULL, 0);
+                break;
+            }
+            if (get_scansuppress && !set_scansuppress) {
+                get_scansuppress = false;
+                set_scansuppress = true;
+                set_scansuppress_value = strtol(arg, NULL, 0);
+                break;
+            }
+            if (get_securitycookie && !set_securitycookie) {
+                get_securitycookie = false;
+                set_securitycookie = true;
+                set_securitycookie_value = strtol(arg, NULL, 0);
+                break;
+            }
+            return ARGP_ERR_UNKNOWN;
         
         default:
             return ARGP_ERR_UNKNOWN;
@@ -404,11 +437,17 @@ main(int argc, char **argv)
     }
 
     if (get_chanspec) {
-        char charbuf[9] = "chanspec";
+        char charbuf[13] = "chanspec";
+        char chanspec_str[CHANSPEC_STR_LEN] = { 0 };
         uint16 chanspec = 0;
-        ret = nex_ioctl(nexio, WLC_GET_VAR, charbuf, 9, false);
-        chanspec = *(uint16 *) charbuf;
-        printf("chanspec: 0x%04x, %s\n", chanspec, wf_chspec_ntoa(chanspec, charbuf));
+        ret = nex_ioctl(nexio, WLC_GET_VAR, charbuf, sizeof(charbuf), false);
+        if (ret < 0 || memcmp(charbuf, "chanspec", 8) == 0) {
+            fprintf(stderr, "ERR: failed to get chanspec\n");
+        } else {
+            chanspec = *(uint16 *) charbuf;
+            printf("chanspec: 0x%04x, %s\n", chanspec,
+                   wf_chspec_ntoa_ex(chanspec, chanspec_str));
+        }
     }
 
     if (set_chanspec) {
@@ -420,10 +459,18 @@ main(int argc, char **argv)
         else
             *chanspec = wf_chspec_aton(set_chanspec_value);
 
-        if (*chanspec == 0)
-            printf("invalid chanspec\n");
-        else
-            ret = nex_ioctl(nexio, WLC_SET_VAR, charbuf, 13, true);
+        if (*chanspec == 0 || *chanspec == INVCHANSPEC) {
+            fprintf(stderr, "ERR: invalid chanspec '%s'\n", set_chanspec_value);
+            return -1;
+        } else {
+            ret = nex_ioctl(nexio, WLC_SET_VAR, charbuf, sizeof(charbuf), true);
+            if (ret < 0) {
+                char chanspec_str[CHANSPEC_STR_LEN] = { 0 };
+                fprintf(stderr, "ERR: failed to set chanspec 0x%04x (%s)\n",
+                        *chanspec, wf_chspec_ntoa_ex(*chanspec, chanspec_str));
+                return -1;
+            }
+        }
     }
 
     if (custom_cmd_set != -1) {
