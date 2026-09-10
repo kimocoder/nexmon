@@ -728,6 +728,8 @@ static struct wireless_dev *brcmf_mon_add_vif(struct wiphy *wiphy, const char *n
 	ifp->ndev->type = ARPHRD_IEEE80211_RADIOTAP;
 	ifp->ndev->ieee80211_ptr->iftype = NL80211_IFTYPE_MONITOR;
 
+	cfg->pub->mon_if = ifp;
+
 	return &ifp->vif->wdev;
 
  fail:
@@ -1013,6 +1015,9 @@ int brcmf_cfg80211_del_iface(struct wiphy *wiphy, struct wireless_dev *wdev)
 		return -EBUSY;
 
 	if (ndev) {
+		if (cfg->pub->mon_if && cfg->pub->mon_if->ndev == ndev)
+			cfg->pub->mon_if = NULL;
+
 		if (test_bit(BRCMF_SCAN_STATUS_BUSY, &cfg->scan_status) &&
 		    cfg->escan_info.ifp == netdev_priv(ndev))
 			brcmf_notify_escan_complete(cfg, netdev_priv(ndev),
@@ -5467,7 +5472,7 @@ static int brcmf_cfg80211_get_channel(struct wiphy *wiphy,
 	struct brcmu_chan ch;
 	enum nl80211_band band = 0;
 	enum nl80211_chan_width width = 0;
-	u32 chanspec;
+	u32 chanspec = 0;
 	int freq, err;
 
 	if (!ndev || drvr->bus_if->state != BRCMF_BUS_UP)
@@ -5477,6 +5482,11 @@ static int brcmf_cfg80211_get_channel(struct wiphy *wiphy,
 	if (err) {
 		bphy_err_ratelimited(drvr, "chanspec failed (%d)\n", err);
 		return err;
+	}
+
+	if (!chanspec) {
+		bphy_err_ratelimited(drvr, "chanspec empty\n");
+		return -EINVAL;
 	}
 
 	ch.chspec = chanspec;
@@ -5511,6 +5521,10 @@ static int brcmf_cfg80211_get_channel(struct wiphy *wiphy,
 
 	freq = ieee80211_channel_to_frequency(ch.control_ch_num, band);
 	chandef->chan = ieee80211_get_channel(wiphy, freq);
+	if (!chandef->chan) {
+		bphy_err_ratelimited(drvr, "Invalid channel frequency %d\n", freq);
+		return -EINVAL;
+	}
 	chandef->width = width;
 	chandef->center_freq1 = ieee80211_channel_to_frequency(ch.chnum, band);
 	chandef->center_freq2 = 0;
