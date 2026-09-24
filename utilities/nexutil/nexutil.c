@@ -374,6 +374,7 @@ main(int argc, char **argv)
     struct nexio *nexio;
     int ret;
     int buf = 0;
+    int failed = 0;
 
     argp_parse(&argp, argc, argv, 0, 0, 0);
 
@@ -396,6 +397,10 @@ main(int argc, char **argv)
     if (set_monitor) {
         buf = set_monitor_value;
         ret = nex_ioctl(nexio, WLC_SET_MONITOR, &buf, 4, true);
+        if (ret < 0) {
+            fprintf(stderr, "ERR: could not set monitor mode to %d\n", set_monitor_value);
+            failed = 1;
+        }
     }
 
     if (set_promisc) {
@@ -409,16 +414,25 @@ main(int argc, char **argv)
             ret = nex_ioctl(nexio, WLC_SET_SCANSUPPRESS, &buf, 4, true);
         else
             ret = nex_ioctl(nexio, WLC_SET_SCANSUPPRESS, &buf, 1, true);
+        if (ret < 0) {
+            fprintf(stderr, "ERR: could not set scan suppress to %d\n", set_scansuppress_value);
+            failed = 1;
+        }
     }
 
     if (set_securitycookie) {
         buf = set_securitycookie_value;
         ret = nex_ioctl(nexio, NEX_SET_SECURITYCOOKIE, &buf, 4, true);
+        if (ret < 0) {
+            fprintf(stderr, "ERR: could not set security cookie\n");
+            failed = 1;
+        }
     }
 
     if (get_monitor) {
         ret = nex_ioctl(nexio, WLC_GET_MONITOR, &buf, 4, false);
-        printf("monitor: %d\n", buf);
+        if (ret < 0) { fprintf(stderr, "ERR: could not get monitor mode\n"); failed = 1; }
+        else printf("monitor: %d\n", buf);
     }
 
     if (get_promisc) {
@@ -428,12 +442,14 @@ main(int argc, char **argv)
 
     if (get_scansuppress) {
         ret = nex_ioctl(nexio, WLC_GET_SCANSUPPRESS, &buf, 4, false);
-        printf("scansuppress: %d\n", buf);
+        if (ret < 0) { fprintf(stderr, "ERR: could not get scan suppress\n"); failed = 1; }
+        else printf("scansuppress: %d\n", buf);
     }
 
     if (get_securitycookie) {
         ret = nex_ioctl(nexio, NEX_GET_SECURITYCOOKIE, &buf, 4, false);
-        printf("securitycookie: %d\n", buf);
+        if (ret < 0) { fprintf(stderr, "ERR: could not get security cookie\n"); failed = 1; }
+        else printf("securitycookie: %d\n", buf);
     }
 
     if (get_chanspec) {
@@ -694,5 +710,6 @@ main(int argc, char **argv)
             model_string, fw_ver2, str[0], str[1], str[2], str[3], str[4], str[5], str[6], str[7], str[8], str[9], str[10], str[11], str[12], str[13], str[14], str[15], str[16]);
     }
 
-    return 0;
+    nex_free(nexio);
+    return failed ? EXIT_FAILURE : 0;
 }
