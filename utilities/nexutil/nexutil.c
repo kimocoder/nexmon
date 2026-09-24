@@ -517,7 +517,23 @@ main(int argc, char **argv)
                         free(custom_cmd_buf);
                         return -1;
                     }
-                    memcpy(custom_cmd_buf, decoded, MIN(decoded_len, custom_cmd_buf_len));
+                    /* Refuse to truncate. custom_cmd_buf_len defaults to 4, so
+                     * injecting a frame with -b but no -l used to copy the first
+                     * 4 bytes of the decoded frame and report success - a short,
+                     * wrong-but-plausible frame on air with exit status 0. The
+                     * MIN() also guarded against reading past `decoded`, which
+                     * b64_decode_ex sizes to exactly decoded_len, so copy
+                     * decoded_len and let the memset zero padding stand. */
+                    if (decoded_len > custom_cmd_buf_len) {
+                        fprintf(stderr,
+                                "ERR: base64 payload decodes to %zu bytes but -l is %u; "
+                                "refusing to truncate. Re-run with -l %zu.\n",
+                                decoded_len, custom_cmd_buf_len, decoded_len);
+                        free(decoded);
+                        free(custom_cmd_buf);
+                        return -1;
+                    }
+                    memcpy(custom_cmd_buf, decoded, decoded_len);
                     free(decoded);
                 } else {
                     strncpy(custom_cmd_buf, custom_cmd_value, custom_cmd_buf_len);
