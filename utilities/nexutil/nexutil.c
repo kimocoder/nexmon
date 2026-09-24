@@ -632,7 +632,14 @@ main(int argc, char **argv)
         nex_ioctl(nexio, WLC_GET_VAR, fw_ver, sizeof(fw_ver), false);
         fw_ver[sizeof(fw_ver) - 1] = 0;
         char *fw_ver2 = strstr(fw_ver, "version");
-        if (fw_ver2 != NULL) {
+        /* fw_ver is filled from the firmware's WLC_GET_VAR reply, so treat it
+         * as untrusted: "version" can match right at the end of the buffer,
+         * and fw_ver2 + 8 would then point past the array. The strlen() and
+         * the trailing-NUL strip below would read and write out of bounds.
+         * Only skip when the result stays inside fw_ver; otherwise fall back
+         * to the whole buffer as we do when the marker is absent. */
+        if (fw_ver2 != NULL &&
+            (size_t)(fw_ver2 - fw_ver) + 8 < sizeof(fw_ver)) {
             fw_ver2 += 8;
             if (*fw_ver2 != '\0')
                 fw_ver2[strlen(fw_ver2) - 1] = 0;
