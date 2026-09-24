@@ -1744,7 +1744,7 @@ wf_channel2chspec(uint pri_ch, uint bw, uint wl_chanspec_band)
 			break;
 		case WL_CHANSPEC_BAND_6G:
 			center_ch = wf_6g_80m_chans;
-			num_ch = ARRAYSIZE(wf_6g_40m_chans);
+			num_ch = ARRAYSIZE(wf_6g_80m_chans);
 			break;
 		}
 	} else if (bw == WL_CHANSPEC_BW_160) {
