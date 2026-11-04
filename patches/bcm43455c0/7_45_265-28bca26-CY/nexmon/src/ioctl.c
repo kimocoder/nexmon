@@ -68,12 +68,12 @@ inject_radio_up(struct wlc_info *wlc)
     set_mpc(wlc, 0);
     wlc_ioctl(wlc, WLC_SET_PM, &z, 4, 0);
     wlc_ioctl(wlc, WLC_SET_TXPWR, &txpwr, 4, 0);
-
     if (wlc && wlc->hw) {
         *(int *)((char *)wlc->hw + 0x144) = 0;
         *(int *)((char *)wlc->hw + 0xf0) = 1;
     }
-    wlc_enable_mac(wlc);
+    /* Do not resume a MAC that this path did not suspend. The helper
+     * balances suspend bookkeeping; unmatched calls corrupt it. */
 }
 
 static char saved_dbg_buf[1024] = {0};
