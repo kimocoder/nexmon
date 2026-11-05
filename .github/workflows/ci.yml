@@ -132,6 +132,57 @@ jobs:
           ccache -s || true
           python patches/bcm43455c0/7_45_265-28bca26-CY/nexmon/validate_build.py --require
 
+  legacy-firmware:
+    name: Build ${{ matrix.dir }} patch
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - dir: bcm43430a1/7_45_41_26
+            fw: brcmfmac43430-sdio.bin
+          - dir: bcm43430a1/7_45_41_46
+            fw: brcmfmac43430-sdio.bin
+          - dir: bcm43436b0/9_88_4_65
+            fw: brcmfmac43436-sdio.bin
+          - dir: bcm43436b0/9_88_0_0
+            fw: fw_bcm43436b0.bin
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Install Firmware Build Dependencies
+        # Same i386 multiarch set as the bcm43455c0 job: the bundled GCC 5
+        # toolchain and its plugin are 32-bit executables. qpdf provides
+        # zlib-flate for the ucode compression step.
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y gcc g++-multilib libc6-i386 libgmp-dev \
+            libgmp-dev:i386 make gawk qpdf xxd
+
+      - name: Build Toolchain Plugin and Extraction Tools
+        run: |
+          set -euo pipefail
+          source setup_env.sh
+          make -C buildtools/gcc-nexmon-plugin
+          make -C buildtools/flash_patch_extractor
+          make -C buildtools/ucode_extractor
+
+      - name: Extract Firmware Components
+        run: |
+          set -euo pipefail
+          source setup_env.sh
+          make -C firmwares/${{ matrix.dir }}
+
+      - name: Build Patch
+        run: |
+          set -euo pipefail
+          touch DISABLE_STATISTICS
+          source setup_env.sh
+          make -C patches/${{ matrix.dir }}/nexmon ${{ matrix.fw }}
+
   sanitize:
     name: Sanitize (ASan+UBSan) + Fuzz
     runs-on: ubuntu-24.04
