@@ -150,6 +150,9 @@ jobs:
             subdir: nexmon
           - dir: bcm43436b0/9_88_0_0
             fw: fw_bcm43436b0.bin
+            # Also exercise the ROM+RAM concatenation; this is the target that
+            # needs the committed ROM dump to exist at the path ROM_FILE names.
+            complete: fw_bcmdhd.complete.bin
             subdir: nexmon
           # Pico W (43439) injection support; the base firmware is generated
           # from the tracked w43439A0_7_95_49_00_combined.h.
@@ -196,6 +199,20 @@ jobs:
           touch DISABLE_STATISTICS
           source setup_env.sh
           make -C patches/${{ matrix.dir }}/${{ matrix.subdir }} ${{ matrix.fw }}
+
+      - name: Build Complete Firmware Image
+        # Only targets with a committed ROM dump (matrix.complete set) can
+        # produce the flashable ROM+RAM image.
+        if: matrix.complete
+        run: |
+          set -euo pipefail
+          source setup_env.sh
+          make -C patches/${{ matrix.dir }}/rom_extraction ${{ matrix.complete }}
+          img=patches/${{ matrix.dir }}/rom_extraction/${{ matrix.complete }}
+          rom=patches/${{ matrix.dir }}/rom_extraction/rom.bin
+          test -s "$img"
+          # 0x800000 is ROMSTART; the ROM is < 1 MiB so one block is enough.
+          dd if="$img" bs=1M skip=8 count=1 status=none | head -c "$(stat -c%s "$rom")" | cmp - "$rom"
 
   sanitize:
     name: Sanitize (ASan+UBSan) + Fuzz

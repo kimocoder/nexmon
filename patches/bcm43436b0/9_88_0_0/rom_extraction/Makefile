@@ -3,6 +3,10 @@ SHELL := /bin/bash
 include ../version.mk
 include $(FW_PATH)/definitions.mk
 
+# firmwares/.gitignore excludes rom.bin because dumps are device-specific, so
+# the 9_88_0_0 dump is committed next to this target instead of in FW_PATH.
+ROM_FILE=$(NEXMON_ROOT)/patches/bcm43436b0/9_88_0_0/rom_extraction/rom.bin
+
 LOCAL_SRCS=$(wildcard src/*.c) src/ucode_compressed.c src/templateram.c
 COMMON_SRCS=$(wildcard $(NEXMON_ROOT)/patches/common/*.c)
 FW_SRCS=$(wildcard $(FW_PATH)/*.c)
@@ -117,12 +121,12 @@ $(RAM_FILE): init gen/patch.elf $(FW_PATH)/$(RAM_FILE) gen/nexmon.mk gen/flashpa
 	@printf "\033[0;31m  APPLYING PATCHES\033[0m gen/nexmon.mk => %s (details: log/patches.log)\n" $@
 	$(Q)make -f gen/nexmon.mk >>log/patches.log 2>>log/flashpatches.log
 
-fw_bcmdhd.complete.clean.bin: $(FW_PATH)/$(RAM_FILE) $(FW_PATH)/$(ROM_FILE)
-	dd if=$(FW_PATH)/$(ROM_FILE) of=$@ bs=1 status=none conv=notrunc seek=$$(($(ROMSTART)))
+fw_bcmdhd.complete.clean.bin: $(FW_PATH)/$(RAM_FILE) $(ROM_FILE)
+	dd if=$(ROM_FILE) of=$@ bs=1 status=none conv=notrunc seek=$$(($(ROMSTART)))
 	dd if=$< of=$@ bs=1 status=none conv=notrunc seek=$$(($(RAMSTART)))
 
-fw_bcmdhd.complete.bin: $(RAM_FILE) $(FW_PATH)/$(ROM_FILE)
-	dd if=$(FW_PATH)/$(ROM_FILE) of=$@ bs=1 status=none conv=notrunc seek=$$(($(ROMSTART)))
+fw_bcmdhd.complete.bin: $(RAM_FILE) $(ROM_FILE)
+	dd if=$(ROM_FILE) of=$@ bs=1 status=none conv=notrunc seek=$$(($(ROMSTART)))
 	dd if=$< of=$@ bs=1 status=none conv=notrunc seek=$$(($(RAMSTART)))
 
 ###################################################################
