@@ -56,7 +56,7 @@ void
 wl_monitor_radiotap(struct wl_info *wl, struct wl_rxsts *sts, struct sk_buff *p) {
     struct sk_buff *p_new = pkt_buf_get_skb(wl->wlc->osh, p->len + sizeof(struct nexmon_radiotap_header));
     struct nexmon_radiotap_header *frame;
-    struct tsf tsf;
+    uint32 tsf_l, tsf_h;
 
     /* pkt_buf_get_skb returns 0 once the packet pool is exhausted, which a busy
      * radio can be pushed into simply by receiving faster than the host drains
@@ -69,7 +69,7 @@ wl_monitor_radiotap(struct wl_info *wl, struct wl_rxsts *sts, struct sk_buff *p)
     }
 
     frame = (struct nexmon_radiotap_header *) p_new->data;
-    wlc_bmac_read_tsf(wl->wlc_hw, &tsf.tsf_l, &tsf.tsf_h);
+    wlc_bmac_read_tsf(wl->wlc_hw, &tsf_l, &tsf_h);
 
     frame->header.it_version = 0;
     frame->header.it_pad = 0;
@@ -79,8 +79,8 @@ wl_monitor_radiotap(struct wl_info *wl, struct wl_rxsts *sts, struct sk_buff *p)
         | (1<<IEEE80211_RADIOTAP_FLAGS)
         | (1<<IEEE80211_RADIOTAP_CHANNEL)
         | (1<<IEEE80211_RADIOTAP_DBM_ANTSIGNAL);
-    frame->tsf.tsf_l = tsf.tsf_l;
-    frame->tsf.tsf_h = tsf.tsf_h;
+    frame->tsf.tsf_l = tsf_l;
+    frame->tsf.tsf_h = tsf_h;
     frame->flags = IEEE80211_RADIOTAP_F_FCS;
     frame->chan_freq = wlc_phy_channel2freq(CHSPEC_CHANNEL(sts->chanspec));
     frame->chan_flags = 0;
