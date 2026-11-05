@@ -164,6 +164,10 @@ jobs:
           - dir: bcm4383a3/20_125_24_g0bd14df
             fw: fw_bcmdhd.bin_4383_a3
             subdir: rom_extraction
+          # Pixel 10 release r1104089 (PR #689), Magisk-installed ROM patch.
+          - dir: bcm4383a3/20_125_5_r1104089
+            fw: fw_bcmdhd.bin_4383_a3
+            subdir: rom_extraction
     steps:
       - uses: actions/checkout@v7
         with:

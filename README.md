@@ -94,6 +94,8 @@ bcm43684b0<sup>5</sup>    | 17_10_157_2809 (r801046) | Asus RT-AX86U            
 bcm43684c0<sup>5</sup>    | 17_10_157_2809 (r801046) | Asus GT-AXE11000         | Stock firmware / Asuswrt-Merlin |     |     |     |  /  |  X  |    
 bcm4375b1<sup>3,5,6</sup> | 18_38_18_sta             | Samsung Galaxy S10        | Rooted + disabled SELinux    |  X  |  X  |  X  |  O  |  X  |    
 bcm4375b1<sup>3,5,6</sup> | 18_41_8_9_sta            | Samsung Galaxy S20        | Rooted + disabled SELinux    |  X  |  X  |  X  |  O  |  X  |    
+bcm4383a3<sup>3,5,9</sup> | 20_125_5 (r1104089)      | Google Pixel 10           | Rooted with [Magisk](https://github.com/topjohnwu/Magisk)           |     |     |     |  X  |  X  |    
+bcm4383a3<sup>3,5,9</sup> | 20_125_24 (g0bd14df)     | Google Pixel 10           | Rooted with [Magisk](https://github.com/topjohnwu/Magisk)           |     |     |     |  X  |  X  |    
 bcm4389c1<sup>5,8,9</sup> | 20_80_87_3_sta (r1050079)| Samsung Galaxy S21 Ultra 5G | Android 14, Rooted with [Magisk](https://github.com/topjohnwu/Magisk) |     |     |     |  X  |  X  |    
 bcm4389c1<sup>5,8,9</sup> | 20_82_42_sta (r985250)   | Samsung Galaxy S22 Plus   | Android 14, Rooted with [Magisk](https://github.com/topjohnwu/Magisk)           |     |     |     |  X  |  X  |    
 bcm4389c1<sup>5,8,9</sup> | 20_101_36_2 (r994653)    | Google Pixel 7 and 7 Pro  | Rooted with [Magisk](https://github.com/topjohnwu/Magisk)           |     |     |     |  X  |  X  |    

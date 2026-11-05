@@ -178,6 +178,7 @@
 #define FW_VER_13_10_246_356_39f8a82_CY   1060
 
 // for CHIP_VER_BCM4383a3
+#define FW_VER_20_125_5_r1104089          1071
 #define FW_VER_20_125_24_g0bd14df         1070
 
 // for CHIP_VER_BCM4378b1
