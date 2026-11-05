@@ -7,7 +7,7 @@ name = "pynexmon"
 version = "0.2.0"
 description = "Nexmon Python SDK and CLI tools for firmware manipulation and CSI extraction"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 license = {text = "GPL-3.0-or-later"}
 authors = [
     {name = "Nexmon Team"}
