@@ -425,9 +425,12 @@ COMPONENTS: List[Dict[str, Any]] = [
         "category": "Library / Tool",
         "path": "utilities/gettext",
         "extract_local": lambda root: safe_read(os.path.join(root, "utilities/gettext/.tarball-version")) or "1.0",
-        "upstream_type": "git_tags",
-        "upstream_url": "https://git.savannah.gnu.org/git/gettext.git",
-        "tag_prefix": "v",
+        # Savannah git is frequently slower than the checker timeout, and
+        # ftp.gnu.org is not reachable from every network; use a fast GNU
+        # release mirror instead.
+        "upstream_type": "web_regex",
+        "upstream_url": "https://mirror.csclub.uwaterloo.ca/gnu/gettext/",
+        "pattern": r'gettext-([0-9][0-9.]*)\.tar\.(?:gz|xz|lz)',
         "website": "https://www.gnu.org/software/gettext/"
     },
     {
@@ -556,9 +559,9 @@ COMPONENTS: List[Dict[str, Any]] = [
         "extract_local": lambda root: (
             (re.search(r'(?:AC_INIT|AM_INIT_AUTOMAKE)\s*\(\s*\[?libiconv\]?\s*,\s*\[?([0-9\.]+)\]?', safe_read(os.path.join(root, "utilities/libiconv/configure.ac"))) or [None, "1.14"])[1]
         ),
-        "upstream_type": "git_tags",
-        "upstream_url": "https://git.savannah.gnu.org/git/libiconv.git",
-        "tag_prefix": "v",
+        "upstream_type": "web_regex",
+        "upstream_url": "https://mirror.csclub.uwaterloo.ca/gnu/libiconv/",
+        "pattern": r'libiconv-([0-9][0-9.]*)\.tar\.(?:gz|xz|lz)',
         "website": "https://www.gnu.org/software/libiconv/"
     },
     {
@@ -803,7 +806,7 @@ COMPONENTS: List[Dict[str, Any]] = [
         "path": "buildtools/mpfr-4.2.2",
         "extract_local": lambda root: safe_read(os.path.join(root, "buildtools/mpfr-4.2.2/VERSION")) or "UNKNOWN",
         "upstream_type": "web_regex",
-        "upstream_url": "https://ftp.gnu.org/gnu/mpfr/",
+        "upstream_url": "https://mirror.csclub.uwaterloo.ca/gnu/mpfr/",
         "pattern": r'mpfr-([0-9]+\.[0-9]+\.[0-9]+)\.tar\.xz',
         "website": "https://www.mpfr.org"
     },
