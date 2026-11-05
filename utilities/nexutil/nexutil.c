@@ -64,6 +64,7 @@
 #include <wlcnt.h>
 
 #include <nexioctls.h>
+#include <capabilities.h>
 
 typedef uint32_t uint;
 
@@ -114,6 +115,7 @@ unsigned char   dump_objmem = false;
 unsigned char   disassociate = false;
 unsigned char   dump_wl_cnt = false;
 unsigned char   revinfo = false;
+unsigned char   get_capabilities = false;
 unsigned char   nonblock = false;
 unsigned char   read_shm = false;
 unsigned int    read_shm_offset = 0;
@@ -162,6 +164,7 @@ static struct argp_option options[] = {
     {"use-udp-tunneling", 'X', "INT", 0, "Use UDP tunneling with security cookie INT"},
     {"broadcast-ip", 'B', "CHAR", 0, "Broadcast IP to use for UDP tunneling (default: 192.168.222.255)"},
     {"revinfo", 'V', 0, 0, "Dump revision information of the Wi-Fi chip"},
+    {"capabilities", 'G', 0, 0, "Print firmware capabilities (monitor, radiotap, injection)"},
     { 0 }
 };
 
@@ -500,6 +503,10 @@ parse_opt(int key, char *arg, struct argp_state *state)
             revinfo = true;
             last_optional_opt = 0;
             break;
+        case 'G':
+            get_capabilities = true;
+            last_optional_opt = 0;
+            break;
 
         case ARGP_KEY_ARG:
             switch (last_optional_opt) {
@@ -769,6 +776,27 @@ main(int argc, char **argv)
         ret = nex_ioctl(nexio, NEX_GET_SECURITYCOOKIE, &buf, 4, false);
         if (ret < 0) { fprintf(stderr, "ERR: could not get security cookie\n"); failed = 1; }
         else printf("securitycookie: %d\n", buf);
+    }
+
+    if (get_capabilities) {
+        uint32 caps = 0;
+
+        ret = nex_ioctl(nexio, NEX_GET_CAPABILITIES, &caps, sizeof(caps), false);
+        if (ret < 0) {
+            fprintf(stderr, "ERR: could not get capabilities\n");
+            failed = 1;
+        } else {
+            uint32 known = NEX_CAP_MONITOR_MODE | NEX_CAP_MONITOR_MODE_RADIOTAP
+                         | NEX_CAP_FRAME_INJECTION;
+
+            caps = le32toh(caps);
+            printf("capabilities: 0x%x\n", caps);
+            printf("  monitor mode:    %s\n", (caps & NEX_CAP_MONITOR_MODE) ? "yes" : "no");
+            printf("  radiotap:        %s\n", (caps & NEX_CAP_MONITOR_MODE_RADIOTAP) ? "yes" : "no");
+            printf("  frame injection: %s\n", (caps & NEX_CAP_FRAME_INJECTION) ? "yes" : "no");
+            if (caps & ~known)
+                printf("  unknown bits:    0x%x\n", caps & ~known);
+        }
     }
 
     if (get_chanspec) {
