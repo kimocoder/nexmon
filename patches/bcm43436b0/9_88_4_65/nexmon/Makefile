@@ -1,6 +1,15 @@
 SHELL = /bin/bash
 -include $(NEXMON_ROOT)/patches/common/nexmon_lazy.mk
 
+include ../version.mk
+include $(FW_PATH)/definitions.mk
+
+LOCAL_SRCS=$(wildcard src/*.c) src/ucode_compressed.c src/templateram.c
+COMMON_SRCS=$(wildcard $(NEXMON_ROOT)/patches/common/*.c)
+FW_SRCS=$(wildcard $(FW_PATH)/*.c)
+
+OBJS=$(addprefix obj/,$(notdir $(LOCAL_SRCS:.c=.o)) $(notdir $(COMMON_SRCS:.c=.o)) $(notdir $(FW_SRCS:.c=.o)))
+
 CFLAGS= \
 	-fplugin=$(CCPLUGIN) \
 	-fplugin-arg-nexmon-objfile=$@ \
