@@ -1,0 +1,57 @@
+name: Ubuntu next-image probe
+
+# Early warning for the ubuntu-latest migration to Ubuntu 26.04 tracked in
+# actions/runner-images#14748. ci.yml stays pinned to ubuntu-24.04; this
+# workflow runs the fragile 32-bit toolchain build against the next image on a
+# schedule so breakage shows up here instead of during a forced migration.
+# It is a separate workflow, so a failure never gates pushes or pull requests.
+
+on:
+  schedule:
+    - cron: '37 3 * * 1'  # weekly Monday 03:37 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  firmware:
+    name: Firmware build on ubuntu-26.04
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install Firmware Build Dependencies
+        # Deliberately no fallback to a reduced dependency set: this job exists
+        # to fail loudly if the i386 multiarch packages are no longer available.
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y gcc g++-multilib libc6-i386 libgmp-dev \
+            libgmp-dev:i386 make gawk qpdf xxd
+
+      - name: Verify the bundled 32-bit toolchain runs
+        shell: bash
+        run: |
+          set -euo pipefail
+          source setup_env.sh
+          "${CC}gcc" --version | head -n 1
+
+      - name: Build Firmware and Require Validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          touch DISABLE_STATISTICS
+          source setup_env.sh
+          export PATH="$(dirname "${CC}gcc"):$PATH"
+          make -C buildtools/gcc-nexmon-plugin
+          make -C buildtools/flash_patch_extractor
+          make -C firmwares/bcm43455c0/7_45_265-28bca26-CY
+          make -j$(nproc) -C patches/bcm43455c0/7_45_265-28bca26-CY/nexmon firmware-only NEXMON_FREEZE_BUILD_NUMBER=1
+          python patches/bcm43455c0/7_45_265-28bca26-CY/nexmon/validate_build.py --require
