@@ -141,12 +141,26 @@ jobs:
         include:
           - dir: bcm43430a1/7_45_41_26
             fw: brcmfmac43430-sdio.bin
+            subdir: nexmon
           - dir: bcm43430a1/7_45_41_46
             fw: brcmfmac43430-sdio.bin
+            subdir: nexmon
           - dir: bcm43436b0/9_88_4_65
             fw: brcmfmac43436-sdio.bin
+            subdir: nexmon
           - dir: bcm43436b0/9_88_0_0
             fw: fw_bcm43436b0.bin
+            subdir: nexmon
+          # Pico W (43439) injection support; the base firmware is generated
+          # from the tracked w43439A0_7_95_49_00_combined.h.
+          - dir: bcm43439a0/7_95_49_2271bb6
+            fw: 43439A0.bin
+            subdir: nexmon
+          # 4383 has no nexmon/ patch dir; the console patches are built from
+          # the extracted ROM in rom_extraction/.
+          - dir: bcm4383a3/20_125_24_g0bd14df
+            fw: fw_bcmdhd.bin_4383_a3
+            subdir: rom_extraction
     steps:
       - uses: actions/checkout@v7
         with:
@@ -181,7 +195,7 @@ jobs:
           set -euo pipefail
           touch DISABLE_STATISTICS
           source setup_env.sh
-          make -C patches/${{ matrix.dir }}/nexmon ${{ matrix.fw }}
+          make -C patches/${{ matrix.dir }}/${{ matrix.subdir }} ${{ matrix.fw }}
 
   sanitize:
     name: Sanitize (ASan+UBSan) + Fuzz
