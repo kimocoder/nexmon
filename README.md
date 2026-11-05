@@ -55,10 +55,10 @@ to save it:
 ```
 
 ### Chip support and memory map
-`nexfirmware.py` `CHIP_DATABASE` lists 10 primary chips with `default_ramstart` (e.g., `0x198000` for BCM43455c0, `0x0` for BCM43430a1, `0x180000` for BCM4339). `firmwares/` contains 23 chip/version combinations, some community-contributed with limited validation. `reverse` auto-detects `RAMSTART` from `firmwares/<chip>/<ver>/definitions.mk` or `CHIP_DATABASE` when `--ramstart` is not given; for other chips pass `--ramstart 0x...` explicitly (see `firmwares/<chip>/<ver>/definitions.mk`). `reverse` also supports `--extract-ucode FILE --disasm ADDR --count N --strings-min-length N`.
+`nexfirmware.py` `CHIP_DATABASE` lists the supported chips with `default_ramstart` (e.g., `0x198000` for BCM43455c0, `0x0` for BCM43430a1, `0x180000` for BCM4339). `firmwares/` contains the supported chip/version combinations, some community-contributed with limited validation. `reverse` auto-detects `RAMSTART` from `firmwares/<chip>/<ver>/definitions.mk` or `CHIP_DATABASE` when `--ramstart` is not given; for other chips pass `--ramstart 0x...` explicitly (see `firmwares/<chip>/<ver>/definitions.mk`). `reverse` also supports `--extract-ucode FILE --disasm ADDR --count N --strings-min-length N`.
 
 # Supported Devices
-The following devices have validated Nexmon patches (M/RT/I = tested). `firmwares/` contains additional chip/version combinations (23 total) with community or limited validation — see `firmwares/<chip>` and `CHIP_DATABASE` in `nexfirmware.py`.
+The following devices have validated Nexmon patches (M/RT/I = tested). `firmwares/` contains additional chip/version combinations with community or limited validation — see `firmwares/<chip>` and `CHIP_DATABASE` in `nexfirmware.py`.
 
 WiFi Chip                 | Firmware Version         | Used in                   | Operating System             |  M  | RT  |  I  | FP  | UC  | CT 
 ------------------------- | ------------------------ | ------------------------- | ---------------------------- | --- | --- | --- | --- | --- | ---
