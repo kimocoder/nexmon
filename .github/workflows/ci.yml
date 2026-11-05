@@ -9,10 +9,13 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Runners are pinned instead of using ubuntu-latest, which migrates to Ubuntu
+# 26.04 during the 2026-10-19..2026-11-19 rollout (actions/runner-images#14748).
+# The native and firmware builds depend on i386 multiarch packages from 24.04.
 jobs:
   lint:
     name: Lint (ruff + shellcheck)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
         with:
@@ -38,7 +41,7 @@ jobs:
 
   test-and-build:
     name: Native Utilities & Unit Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
         with:
@@ -131,7 +134,7 @@ jobs:
 
   sanitize:
     name: Sanitize (ASan+UBSan) + Fuzz
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
         with:

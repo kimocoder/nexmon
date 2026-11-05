@@ -7,7 +7,9 @@ on:
 
 jobs:
   check-updates:
-    runs-on: ubuntu-latest
+    # Pinned rather than ubuntu-latest, which moves to Ubuntu 26.04 during the
+    # 2026-10-19..2026-11-19 rollout (actions/runner-images#14748).
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
         with:
