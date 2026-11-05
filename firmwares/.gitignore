@@ -2,6 +2,7 @@
 !/.gitignore
 *ucode.bin
 *ucode[x0-9].bin
+complete.bin
 dlarray*.bin
 flashpatches.c
 templateram.bin
