@@ -55,3 +55,36 @@ jobs:
           make -C firmwares/bcm43455c0/7_45_265-28bca26-CY
           make -j$(nproc) -C patches/bcm43455c0/7_45_265-28bca26-CY/nexmon firmware-only NEXMON_FREEZE_BUILD_NUMBER=1
           python patches/bcm43455c0/7_45_265-28bca26-CY/nexmon/validate_build.py --require
+
+  native:
+    name: Native utilities + sanitizers on ubuntu-26.04
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install Native and Sanitizer Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc make libpcap-dev libnl-3-dev \
+            libnl-genl-3-dev libcap-dev
+          python -m pip install capstone
+
+      - name: Build nexutil (native)
+        run: make -C utilities/nexutil NATIVE_BUILD=1
+
+      - name: Build rawproxy/rawproxyreverse/libnexio with sanitizers
+        run: |
+          make -C utilities/rawproxy sanitize
+          make -C utilities/rawproxyreverse sanitize
+          make -C utilities/libnexio sanitize
+
+      - name: Run radiotap fuzz tests
+        run: |
+          python -m unittest tests.test_radiotap_fuzz -v
+          python -m unittest tests.test_hardening -v
