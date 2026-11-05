@@ -94,6 +94,61 @@ class TestFirmwareValidator(unittest.TestCase):
         self.assertFalse(success)
         self.assertGreater(validator.failed, 0)
 
+    @staticmethod
+    def _diff_validator(tmp, original: bytes, patched: bytes):
+        patch_dir = Path(tmp)
+        original_path = patch_dir / "original.bin"
+        patched_path = patch_dir / "patched.bin"
+        original_path.write_bytes(original)
+        patched_path.write_bytes(patched)
+        validator = FirmwareValidator(patch_dir=str(patch_dir), quiet=True)
+        validator.original_bin = str(original_path)
+        validator.patched_bin = str(patched_path)
+        return validator
+
+    def test_firmware_growth_is_accepted(self):
+        """Some targets place the patch region past the shipped image end."""
+        with tempfile.TemporaryDirectory(prefix="nexmon-validator-grow-") as tmp:
+            original = b"\x00" * 128
+            patched = bytearray(original)
+            patched[16:20] = b"\xde\xad\xbe\xef"
+            patched.extend(b"\xaa" * 32)
+            validator = self._diff_validator(tmp, original, bytes(patched))
+
+            validator.validate_firmware_diff()
+
+            self.assertEqual(validator.failed, 0)
+            self.assertTrue(
+                any("extended by 32 bytes" in r["message"] for r in validator.results),
+                validator.results,
+            )
+
+    def test_append_only_firmware_is_rejected(self):
+        """Growing without modifying any original byte means no patch ran."""
+        with tempfile.TemporaryDirectory(prefix="nexmon-validator-append-") as tmp:
+            original = b"\x00" * 128
+            validator = self._diff_validator(tmp, original, original + b"\xaa" * 8)
+
+            validator.validate_firmware_diff()
+
+            self.assertGreaterEqual(validator.failed, 1)
+            self.assertTrue(
+                any("only appends data" in r["message"] for r in validator.results),
+                validator.results,
+            )
+
+    def test_shrinking_firmware_is_rejected(self):
+        with tempfile.TemporaryDirectory(prefix="nexmon-validator-shrink-") as tmp:
+            validator = self._diff_validator(tmp, b"\x00" * 128, b"\x00" * 64)
+
+            validator.validate_firmware_diff()
+
+            self.assertGreaterEqual(validator.failed, 1)
+            self.assertTrue(
+                any("smaller than original" in r["message"] for r in validator.results),
+                validator.results,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

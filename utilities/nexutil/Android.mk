@@ -4,6 +4,7 @@ PATCHES_PATH := $(LOCAL_PATH)/../../patches
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := \
 	nexutil.c \
+	nexutil_capabilities.c \
 	bcmutils.c \
 	bcmwifi_channels.c \
 	b64-encode.c \

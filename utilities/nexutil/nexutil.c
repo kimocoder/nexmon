@@ -72,6 +72,8 @@ typedef uint32_t uint;
 #include <bcmwifi_channels.h>
 #include <b64.h>
 
+#include "nexutil_capabilities.h"
+
 #if ANDROID
 #include <sys/system_properties.h>
 #endif
@@ -779,24 +781,8 @@ main(int argc, char **argv)
     }
 
     if (get_capabilities) {
-        uint32 caps = 0;
-
-        ret = nex_ioctl(nexio, NEX_GET_CAPABILITIES, &caps, sizeof(caps), false);
-        if (ret < 0) {
-            fprintf(stderr, "ERR: could not get capabilities\n");
+        if (nexutil_report_capabilities(nex_ioctl, nexio, stdout, stderr) < 0)
             failed = 1;
-        } else {
-            uint32 known = NEX_CAP_MONITOR_MODE | NEX_CAP_MONITOR_MODE_RADIOTAP
-                         | NEX_CAP_FRAME_INJECTION;
-
-            caps = le32toh(caps);
-            printf("capabilities: 0x%x\n", caps);
-            printf("  monitor mode:    %s\n", (caps & NEX_CAP_MONITOR_MODE) ? "yes" : "no");
-            printf("  radiotap:        %s\n", (caps & NEX_CAP_MONITOR_MODE_RADIOTAP) ? "yes" : "no");
-            printf("  frame injection: %s\n", (caps & NEX_CAP_FRAME_INJECTION) ? "yes" : "no");
-            if (caps & ~known)
-                printf("  unknown bits:    0x%x\n", caps & ~known);
-        }
     }
 
     if (get_chanspec) {

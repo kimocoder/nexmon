@@ -204,6 +204,14 @@ jobs:
           source setup_env.sh
           make -C patches/${{ matrix.dir }}/${{ matrix.subdir }} ${{ matrix.fw }}
 
+      - name: Validate Patched Firmware
+        # Structural validation: size growth, byte diff, ELF sections,
+        # declared/fpconfig overlap, logs, ucode, capability word.
+        run: |
+          set -euo pipefail
+          python3 buildtools/scripts/validate_firmware.py \
+            --patch-dir patches/${{ matrix.dir }}/${{ matrix.subdir }}
+
       - name: Build Complete Firmware Image
         # Only targets with a committed ROM dump (matrix.complete set) can
         # produce the flashable ROM+RAM image.

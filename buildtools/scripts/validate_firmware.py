@@ -4,7 +4,7 @@
 Validates Nexmon firmware patch builds across all Broadcom/Cypress targets:
   1. Build artifact existence (patched bin, original bin, patch ELF, gen/ linker scripts)
   2. Object file compilation integrity
-  3. Firmware size matching (in-place patching invariant) and modification localization
+  3. Firmware size preservation or controlled growth, and modification localization
   4. ELF patch file format, architecture (ARM 32-bit LE), and entry point
   5. Memory map boundaries and linker region non-overlap
   6. Nexmon identifier and firmware version string preservation
@@ -253,40 +253,85 @@ class FirmwareValidator:
             else:
                 self.log_fail(f"{name} missing: {path}")
 
-        # Check essential generated files in gen/
-        for gen_file in ["nexmon.ld", "flashpatches.ld", "memory.ld", "nexmon.mk"]:
+        # Check essential generated files in gen/. flashpatches.* only exist
+        # on targets that apply flash patches at all.
+        for gen_file in ["nexmon.ld", "memory.ld", "nexmon.mk"]:
             p = os.path.join(self.patch_dir, "gen", gen_file)
             if os.path.isfile(p):
                 self.log_pass(f"Generated file exists: {gen_file}")
             else:
                 self.log_fail(f"Generated file missing: {gen_file}")
+        for gen_file in ["flashpatches.ld", "flashpatches.mk"]:
+            p = os.path.join(self.patch_dir, "gen", gen_file)
+            if os.path.isfile(p):
+                self.log_pass(f"Generated file exists: {gen_file}")
+
+    def _makefile_sources(self) -> Optional[List[str]]:
+        """Object names the target Makefile actually compiles, or None.
+
+        Targets differ in which patches/common/*.c they pull in (nexmon
+        builds often use a wildcard, rom_extraction targets an explicit
+        subset), so derive the expected set from the Makefile instead of
+        assuming every shared source is linked everywhere.
+        """
+        mk = os.path.join(self.patch_dir, "Makefile")
+        if not os.path.isfile(mk):
+            return None
+        with open(mk, "r", encoding="utf-8", errors="replace") as f:
+            text = f.read().replace("\\\n", " ")
+        values: List[str] = []
+        for line in text.splitlines():
+            m = re.match(r"\s*(?:LOCAL_SRCS|COMMON_SRCS|FW_SRCS)\s*[:+]?=\s*(.*)", line)
+            if m:
+                values.append(m.group(1))
+        if not values:
+            return None
+
+        def subst(value: str) -> str:
+            value = value.replace("$(NEXMON_ROOT)", self.nexmon_root)
+            if self.fw_dir:
+                value = value.replace("$(FW_PATH)", self.fw_dir)
+            return value
+
+        def expand_wildcard(match):
+            pattern = subst(match.group(1).strip())
+            if not os.path.isabs(pattern):
+                pattern = os.path.join(self.patch_dir, pattern)
+            return " ".join(glob.glob(pattern))
+
+        sources: List[str] = []
+        for value in values:
+            value = subst(value)
+            value = re.sub(r"\$\(wildcard\s+([^)]*)\)", expand_wildcard, value)
+            sources.extend(t for t in value.split() if t.endswith(".c"))
+
+        seen = set()
+        objs = []
+        for src in sources:
+            obj = os.path.splitext(os.path.basename(src))[0] + ".o"
+            if obj not in seen:
+                seen.add(obj)
+                objs.append(obj)
+        return objs
 
     def validate_objects(self):
         self.section("2. Object File Compilation")
         obj_dir = os.path.join(self.patch_dir, "obj")
         actual_objs = set(os.listdir(obj_dir)) if os.path.isdir(obj_dir) else set()
 
-        # Find expected C sources — include both local src/ and shared
-        # patches/common/ so missing helper objects are caught.
-        src_c = glob.glob(os.path.join(self.patch_dir, "src", "*.c"))
-        common_c = glob.glob(os.path.join(self.nexmon_root, "patches", "common", "*.c"))
-        fw_c = glob.glob(os.path.join(self.fw_dir, "*.c")) if self.fw_dir else []
-        all_src = src_c + common_c + fw_c
-        expected_objs = [os.path.splitext(os.path.basename(f))[0] + ".o" for f in all_src]
-
-        # Deduplicate while preserving order
-        seen_objs = set()
-        deduped = []
-        for obj in expected_objs:
-            if obj not in seen_objs:
-                seen_objs.add(obj)
-                deduped.append(obj)
-        expected_objs = deduped
-
-        # Key common objects expected in firmware builds
-        for co in ["patch.o", "ioctl.o"]:
-            if co not in expected_objs and (co in actual_objs or os.path.isfile(os.path.join(self.patch_dir, "src", co.replace(".o", ".c")))):
-                expected_objs.append(co)
+        expected_objs = self._makefile_sources()
+        if expected_objs is None:
+            # Fallback heuristic for trees without a parseable Makefile.
+            src_c = glob.glob(os.path.join(self.patch_dir, "src", "*.c"))
+            common_c = glob.glob(os.path.join(self.nexmon_root, "patches", "common", "*.c"))
+            fw_c = glob.glob(os.path.join(self.fw_dir, "*.c")) if self.fw_dir else []
+            seen_objs = set()
+            expected_objs = []
+            for f in src_c + common_c + fw_c:
+                obj = os.path.splitext(os.path.basename(f))[0] + ".o"
+                if obj not in seen_objs:
+                    seen_objs.add(obj)
+                    expected_objs.append(obj)
 
         for obj in expected_objs:
             if obj in actual_objs:
@@ -305,25 +350,42 @@ class FirmwareValidator:
         with open(self.original_bin, "rb") as f:
             orig_data = f.read()
 
+        # Some targets place the patch region past the end of the shipped
+        # firmware; dd then extends the file. Only shrinking is impossible.
         if len(patched_data) == len(orig_data):
             self.log_pass(f"Sizes match exactly: {len(patched_data)} bytes (in-place patching invariant)")
+        elif len(patched_data) > len(orig_data):
+            self.log_pass(
+                f"Patched firmware extended by {len(patched_data) - len(orig_data)} bytes "
+                f"({len(patched_data)} vs {len(orig_data)}): patch region lies past the original end"
+            )
         else:
-            self.log_fail(f"Size mismatch: patched={len(patched_data)}, original={len(orig_data)}")
+            self.log_fail(
+                f"Patched firmware is smaller than original: "
+                f"{len(patched_data)} < {len(orig_data)}"
+            )
 
-        if patched_data != orig_data:
+        common = min(len(patched_data), len(orig_data))
+        if common and patched_data[:common] != orig_data[:common]:
             # Use numpy for 10× speedup on 500KB images when available; fallback
             # to Python loop. Both are correct, numpy just avoids per-byte Python.
             try:
                 import numpy as np
-                diff_count = int(np.count_nonzero(np.frombuffer(patched_data, dtype=np.uint8) != np.frombuffer(orig_data, dtype=np.uint8)))
+                diff_count = int(np.count_nonzero(
+                    np.frombuffer(patched_data[:common], dtype=np.uint8)
+                    != np.frombuffer(orig_data[:common], dtype=np.uint8)
+                ))
             except Exception:
-                diff_count = sum(1 for a, b in zip(patched_data, orig_data) if a != b)
+                diff_count = sum(1 for a, b in zip(patched_data[:common], orig_data[:common]) if a != b)
+            diff_count += len(patched_data) - common
             self.log_pass(f"Firmware was patched: {diff_count} bytes differ from original")
             unchanged_pct = (len(patched_data) - diff_count) / len(patched_data) * 100.0
             if unchanged_pct > 80.0:
                 self.log_pass(f"Patch modification is properly localized: {unchanged_pct:.2f}% unchanged")
             else:
                 self.log_warn(f"Large patch footprint: only {unchanged_pct:.2f}% unchanged")
+        elif len(patched_data) > len(orig_data):
+            self.log_fail("Patched firmware only appends data — no original bytes were modified!")
         else:
             self.log_fail("Patched firmware is IDENTICAL to original — patches were not applied!")
 
@@ -384,6 +446,80 @@ class FirmwareValidator:
                 self.log_warn(f"ELF entry point 0x{e_entry:08X} outside expected RAM range")
         else:
             self.log_pass(f"ELF entry point: 0x{e_entry:08X}")
+
+    def _elf_sections(self):
+        """Parse 32-bit little-endian section headers from gen/patch.elf."""
+        if getattr(self, "_elf_cache", None) is not None:
+            return self._elf_cache
+        self._elf_cache = []
+        if not (self.patch_elf and os.path.isfile(self.patch_elf)):
+            return self._elf_cache
+        with open(self.patch_elf, "rb") as f:
+            data = f.read()
+        if len(data) < 52 or data[:4] != b"\x7fELF" or data[4] != 1 or data[5] != 1:
+            return self._elf_cache
+        e_shoff, = struct.unpack_from("<I", data, 0x20)
+        e_shentsize, e_shnum, e_shstrndx = struct.unpack_from("<HHH", data, 0x2E)
+        if e_shentsize < 40 or e_shnum == 0 or e_shoff + e_shnum * e_shentsize > len(data):
+            return self._elf_cache
+        raw = []
+        for i in range(e_shnum):
+            off = e_shoff + i * e_shentsize
+            sh_name, sh_type, sh_flags, sh_addr, sh_offset, sh_size = struct.unpack_from("<IIIIII", data, off)
+            sh_link, = struct.unpack_from("<I", data, off + 0x18)
+            raw.append({
+                "sh_name": sh_name, "type": sh_type, "flags": sh_flags,
+                "addr": sh_addr, "offset": sh_offset, "size": sh_size,
+                "link": sh_link, "name": "",
+            })
+        strtab = b""
+        if 0 <= e_shstrndx < len(raw):
+            s = raw[e_shstrndx]
+            strtab = data[s["offset"]:s["offset"] + s["size"]]
+        for sec in raw:
+            name_off = sec.pop("sh_name")
+            if strtab and name_off < len(strtab):
+                end = strtab.find(b"\0", name_off)
+                sec["name"] = strtab[name_off:end if end != -1 else len(strtab)].decode("ascii", "replace")
+        self._elf_cache = raw
+        return self._elf_cache
+
+    def _elf_alloc_sections(self):
+        """Allocated sections with a real address, as (name, start, end)."""
+        return [
+            (s["name"], s["addr"], s["addr"] + s["size"])
+            for s in self._elf_sections()
+            if (s["flags"] & 0x2) and s["addr"] and s["size"]
+        ]
+
+    def _elf_symbol_address(self, wanted: str) -> Optional[int]:
+        sections = self._elf_sections()
+        if not sections:
+            return None
+        with open(self.patch_elf, "rb") as f:
+            data = f.read()
+        for sec in sections:
+            if sec["type"] != 2:  # SHT_SYMTAB
+                continue
+            if not (0 <= sec["link"] < len(sections)):
+                continue
+            strtab = sections[sec["link"]]
+            strtab_data = data[strtab["offset"]:strtab["offset"] + strtab["size"]]
+            for j in range(sec["size"] // 16):
+                off = sec["offset"] + j * 16
+                if off + 16 > len(data):
+                    break
+                st_name, st_value, _st_size, _st_info, _st_other, _shndx = struct.unpack_from(
+                    "<IIIBBH", data, off
+                )
+                if st_name < len(strtab_data):
+                    end = strtab_data.find(b"\0", st_name)
+                    name = strtab_data[
+                        st_name:end if end != -1 else len(strtab_data)
+                    ].decode("ascii", "replace")
+                    if name == wanted:
+                        return st_value
+        return None
 
     def validate_memory_map(self):
         self.section("5. Memory Map and Linker Region Validation")
@@ -472,16 +608,42 @@ class FirmwareValidator:
                     f"0x{ram_start:06X}-0x{ram_end:06X})"
                 )
 
-        # Check ordering of non-overlapping sub-regions
+        # Check ordering of sub-regions. A declared overlap is only fatal if
+        # an allocated section actually extends into the next region (some
+        # targets declare a generous ucode container that overlaps fpconfig,
+        # while the linked ucode blob stops well before it).
         sub = [(n, linker_regions[n]) for n in ("ucode", "fpconfig", "patch") if n in linker_regions]
         sub.sort(key=lambda x: x[1][0])
+        alloc = self._elf_alloc_sections()
         for i in range(len(sub) - 1):
-            n1, (_, e1, _) = sub[i]
+            n1, (s1, e1, _) = sub[i]
             n2, (s2, _, _) = sub[i + 1]
             if e1 <= s2:
                 self.log_pass(f"Linker regions non-overlapping: '{n1}' ends 0x{e1:X} <= '{n2}' starts 0x{s2:X}")
+                continue
+            if not alloc:
+                self.log_warn(
+                    f"Declared linker regions '{n1}' and '{n2}' overlap "
+                    f"(0x{e1:X} > 0x{s2:X}); no ELF sections available to check actual extent"
+                )
+                continue
+            intruders = [
+                (name, start, end) for name, start, end in alloc
+                if s1 <= start < e1 and end > s2
+            ]
+            if intruders:
+                name, start, end = intruders[0]
+                self.log_fail(
+                    f"Linker region overlap is real: section '{name}' "
+                    f"0x{start:X}-0x{end:X} intrudes into '{n2}' at 0x{s2:X}"
+                )
             else:
-                self.log_fail(f"Linker region overlap detected: '{n1}' ends 0x{e1:X} > '{n2}' starts 0x{s2:X}")
+                in_first = [end for _, start, end in alloc if s1 <= start < e1]
+                actual_end = max(in_first) if in_first else s1
+                self.log_pass(
+                    f"Declared regions '{n1}'/'{n2}' overlap, but allocated sections "
+                    f"end 0x{actual_end:X} <= '{n2}' start 0x{s2:X}"
+                )
 
     def validate_logs(self):
         self.section("6. Compiler & Linker Log Inspection")
@@ -596,8 +758,37 @@ class FirmwareValidator:
             except Exception as e:
                 self.log_fail(f"Ucode decompression failed: {e}")
 
+    def validate_capabilities(self):
+        self.section("8. Capability Word (nexutil -G)")
+        if not (self.patch_elf and os.path.isfile(self.patch_elf) and
+                self.patched_bin and os.path.isfile(self.patched_bin)):
+            self.log_warn("Skipping capability check — patch ELF or patched binary missing")
+            return
+        addr = self._elf_symbol_address("capabilities")
+        if addr is None:
+            self.log_warn("No 'capabilities' symbol in patch ELF; cannot verify the word")
+            return
+        ram_start = self.definitions.get("RAMSTART")
+        if ram_start is None:
+            self.log_warn("RAMSTART unknown; cannot map the capabilities symbol to a file offset")
+            return
+        if addr < ram_start:
+            self.log_warn(f"capabilities symbol 0x{addr:X} is below RAMSTART 0x{ram_start:X}")
+            return
+        with open(self.patched_bin, "rb") as f:
+            f.seek(addr - ram_start)
+            raw = f.read(4)
+        if len(raw) != 4:
+            self.log_fail(f"capabilities word at 0x{addr:X} is outside the patched image")
+            return
+        value = struct.unpack("<I", raw)[0]
+        known = 0x7  # monitor | radiotap | frame injection
+        self.log_pass(f"Capability word in patched image: 0x{value:x}")
+        if value & ~known:
+            self.log_warn(f"Capability word advertises unknown bits: 0x{value & ~known:x}")
+
     def compute_hashes(self):
-        self.section("8. Cryptographic Hashes")
+        self.section("9. Cryptographic Hashes")
         if self.patched_bin and os.path.isfile(self.patched_bin):
             with open(self.patched_bin, "rb") as f:
                 data = f.read()
@@ -621,6 +812,7 @@ class FirmwareValidator:
         self.validate_logs()
         self.validate_firmware_strings()
         self.validate_ucode()
+        self.validate_capabilities()
         self.compute_hashes()
 
         if not self.quiet:
