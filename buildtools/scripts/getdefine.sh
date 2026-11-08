@@ -18,8 +18,9 @@ if [ -f "$CACHE_FILE" ] && [ "$CACHE_FILE" -nt "$FW_HDR" ]; then
     cat "$CACHE_FILE"
     exit 0
 fi
-OUT=$(printf "#include \"%s/patches/include/firmware_version.h\"\n%s\n" "$NEXMON_ROOT" "$1" | gcc -E -x c - 2>/dev/null | tail -n 1)
+OUT=$(printf "#include \"%s/patches/include/firmware_version.h\"\n%s\n" "$NEXMON_ROOT" "$1" | ${CC:-gcc} -E -x c - 2>/dev/null | tail -n 1)
 TMP_FILE=$(mktemp "$CACHE_DIR/.tmp.XXXXXX" 2>/dev/null || mktemp "${TMPDIR:-/tmp}/nexmon-gd.XXXXXX")
+trap 'rm -f "$TMP_FILE" 2>/dev/null' EXIT
 printf "%s\n" "$OUT" > "$TMP_FILE"
 mv -f "$TMP_FILE" "$CACHE_FILE" 2>/dev/null || true
 printf "%s\n" "$OUT"

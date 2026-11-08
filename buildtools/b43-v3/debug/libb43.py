@@ -315,17 +315,22 @@ class Disassembler:
 		input.close()
 		output.close()
 
-		cmd = ["b43-dasm", input.name, output.name] + shlex.split(b43DasmOpts)
 		try:
-			subprocess.run(cmd, check=False)
-		except FileNotFoundError:
-			subprocess.run(f"b43-dasm '{input.name}' '{output.name}' {b43DasmOpts}", shell=True, check=False)
+			cmd = ["b43-dasm", input.name, output.name] + shlex.split(b43DasmOpts)
+			try:
+				res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+				if res.returncode != 0:
+					raise B43Exception(f"b43-dasm failed: {res.stderr}")
+			except FileNotFoundError:
+				raise B43Exception("b43-dasm not found in PATH")
 
-		with open(output.name, "r", encoding="utf-8", errors="ignore") as f:
-			self.asmText = f.read()
-
-		os.unlink(input.name)
-		os.unlink(output.name)
+			with open(output.name, "r", encoding="utf-8", errors="ignore") as f:
+				self.asmText = f.read()
+		finally:
+			if os.path.exists(input.name):
+				os.unlink(input.name)
+			if os.path.exists(output.name):
+				os.unlink(output.name)
 
 	def getAsm(self):
 		"""Returns the assembly code."""
@@ -343,17 +348,22 @@ class Assembler:
 		input.close()
 		output.close()
 
-		cmd = ["b43-asm", input.name, output.name] + shlex.split(b43AsmOpts)
 		try:
-			subprocess.run(cmd, check=False)
-		except FileNotFoundError:
-			subprocess.run(f"b43-asm '{input.name}' '{output.name}' {b43AsmOpts}", shell=True, check=False)
+			cmd = ["b43-asm", input.name, output.name] + shlex.split(b43AsmOpts)
+			try:
+				res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+				if res.returncode != 0:
+					raise B43Exception(f"b43-asm failed: {res.stderr}")
+			except FileNotFoundError:
+				raise B43Exception("b43-asm not found in PATH")
 
-		with open(output.name, "rb") as f:
-			self.binaryText = f.read()
-
-		os.unlink(input.name)
-		os.unlink(output.name)
+			with open(output.name, "rb") as f:
+				self.binaryText = f.read()
+		finally:
+			if os.path.exists(input.name):
+				os.unlink(input.name)
+			if os.path.exists(output.name):
+				os.unlink(output.name)
 
 	def getBinary(self):
 		"""Returns the binary code."""
@@ -651,9 +661,11 @@ class B43AsmParser:
 		self.codelines = []
 		label = re.compile(r"^\s*\w+:\s*$")
 		insn_0 = re.compile(r"^\s*([@\.\w]+)\s*$")
-		insn_2 = re.compile(r"^\s*([@\.\w]+)\s+([@\[\],\w]+),\s*([@\[\],\w]+)\s*$")
-		insn_3 = re.compile(r"^\s*([@\.\w]+)\s+([@\[\],\w]+),\s*([@\[\],\w]+),\s*([@\[\],\w]+)\s*$")
-		insn_5 = re.compile(r"^\s*([@\.\w]+)\s+([@\[\],\w]+),\s*([@\[\],\w]+),\s*([@\[\],\w]+),\s*([@\[\],\w]+),\s*([@\[\],\w]+)\s*$")
+		insn_1 = re.compile(r"^\s*([@\.\w]+)\s+([@\[\],\w\-]+)\s*$")
+		insn_2 = re.compile(r"^\s*([@\.\w]+)\s+([@\[\],\w\-]+),\s*([@\[\],\w\-]+)\s*$")
+		insn_3 = re.compile(r"^\s*([@\.\w]+)\s+([@\[\],\w\-]+),\s*([@\[\],\w\-]+),\s*([@\[\],\w\-]+)\s*$")
+		insn_4 = re.compile(r"^\s*([@\.\w]+)\s+([@\[\],\w\-]+),\s*([@\[\],\w\-]+),\s*([@\[\],\w\-]+),\s*([@\[\],\w\-]+)\s*$")
+		insn_5 = re.compile(r"^\s*([@\.\w]+)\s+([@\[\],\w\-]+),\s*([@\[\],\w\-]+),\s*([@\[\],\w\-]+),\s*([@\[\],\w\-]+),\s*([@\[\],\w\-]+)\s*$")
 		for line in asm_code.splitlines():
 			m = label.match(line)
 			if m: # Label:
@@ -663,6 +675,12 @@ class B43AsmParser:
 			m = insn_0.match(line)
 			if m: # No operands
 				insn = B43AsmInstruction(m.group(1))
+				self.codelines.append(insn)
+				continue
+			m = insn_1.match(line)
+			if m: # One operand
+				insn = B43AsmInstruction(m.group(1))
+				insn.addOperand(m.group(2))
 				self.codelines.append(insn)
 				continue
 			m = insn_2.match(line)
@@ -678,6 +696,15 @@ class B43AsmParser:
 				insn.addOperand(m.group(2))
 				insn.addOperand(m.group(3))
 				insn.addOperand(m.group(4))
+				self.codelines.append(insn)
+				continue
+			m = insn_4.match(line)
+			if m: # Four operands
+				insn = B43AsmInstruction(m.group(1))
+				insn.addOperand(m.group(2))
+				insn.addOperand(m.group(3))
+				insn.addOperand(m.group(4))
+				insn.addOperand(m.group(5))
 				self.codelines.append(insn)
 				continue
 			m = insn_5.match(line)
@@ -707,11 +734,16 @@ class B43Beautifier(B43AsmParser):
 		self.symSpr = B43SymbolicSpr(headers_dir + "/spr.inc")
 		self.symShm = B43SymbolicShm(headers_dir + "/shm.inc")
 		self.symCond = B43SymbolicCondition(headers_dir + "/cond.inc")
-		self.symScr = B43SymbolicScr(headers_dir + "/scr.inc")
+		scr_path = headers_dir + "/scr.inc"
+		if os.path.isfile(scr_path):
+			self.symScr = B43SymbolicScr(scr_path)
+		else:
+			self.symScr = None
 		self.preamble = "#include \"%s/spr.inc\"\n" % headers_dir
 		self.preamble += "#include \"%s/shm.inc\"\n" % headers_dir
 		self.preamble += "#include \"%s/cond.inc\"\n" % headers_dir
-		self.preamble += "#include \"%s/scr.inc\"\n" % headers_dir
+		if self.symScr is not None:
+			self.preamble += "#include \"%s/scr.inc\"\n" % headers_dir
 		self.preamble += "\n"
 		self.__process_code()
 
@@ -753,7 +785,7 @@ class B43Beautifier(B43AsmParser):
 				o = operands[i]
 				# Transform SCR operands
 				m = scr_re.match(o)
-				if m:
+				if m and self.symScr is not None:
 					operands[i] = self.symScr.get(o)
 					continue
 				# Transform SPR operands

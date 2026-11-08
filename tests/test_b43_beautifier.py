@@ -77,6 +77,63 @@ start_lbl:
             if os.path.exists(asm_path):
                 os.remove(asm_path)
 
+    def test_beautifier_1_and_4_operand_instructions(self):
+        asm_code = """%arch 5
+%start start_lbl
+start_lbl:
+    jmp start_lbl
+    call start_lbl
+    mov r0, spr848
+"""
+        with tempfile.NamedTemporaryFile("w+", suffix=".asm", delete=False) as f:
+            f.write(asm_code)
+            asm_path = f.name
+
+        try:
+            res = subprocess.run(
+                [
+                    sys.executable,
+                    str(self.beautifier_bin),
+                    "-a", asm_path,
+                    "-d", str(self.include_dir),
+                ],
+                capture_output=True,
+                text=True
+            )
+            self.assertEqual(res.returncode, 0, f"Stderr: {res.stderr}")
+            self.assertIn("jmp\tstart_lbl", res.stdout)
+            self.assertIn("call\tstart_lbl", res.stdout)
+            self.assertIn("SCR_RSV0", res.stdout)
+        finally:
+            if os.path.exists(asm_path):
+                os.remove(asm_path)
+
+    def test_beautifier_legacy_dir_without_scr_inc(self):
+        legacy_include = ROOT / "buildtools" / "b43" / "debug" / "include"
+        asm_code = "%arch 5\n%start start_lbl\nstart_lbl:\n    mov r0, spr848\n"
+        with tempfile.NamedTemporaryFile("w+", suffix=".asm", delete=False) as f:
+            f.write(asm_code)
+            asm_path = f.name
+
+        try:
+            res = subprocess.run(
+                [
+                    sys.executable,
+                    str(self.beautifier_bin),
+                    "-a", asm_path,
+                    "-d", str(legacy_include),
+                ],
+                capture_output=True,
+                text=True
+            )
+            self.assertEqual(res.returncode, 0, f"Stderr: {res.stderr}")
+            self.assertIn('#include "', res.stdout)
+            self.assertIn('spr.inc"', res.stdout)
+            self.assertNotIn('scr.inc"', res.stdout)
+        finally:
+            if os.path.exists(asm_path):
+                os.remove(asm_path)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -12,9 +12,9 @@ BEGIN {
 			# 30× objdump processes per build. Use ENVIRON when
 			# available, fallback to shell expansion.
 			if (ENVIRON["NEXMON_ROOT"] != "") {
-				cmd = ENVIRON["NEXMON_ROOT"] "/buildtools/scripts/getsectionaddr.sh " sec " " src_file
+				cmd = "\"" ENVIRON["NEXMON_ROOT"] "/buildtools/scripts/getsectionaddr.sh\" \"" sec "\" \"" src_file "\""
 			} else {
-				cmd = "$NEXMON_ROOT/buildtools/scripts/getsectionaddr.sh " sec " " src_file
+				cmd = "\"$NEXMON_ROOT/buildtools/scripts/getsectionaddr.sh\" \"" sec "\" \"" src_file "\""
 			}
 			result = ""
 			cmd | getline result

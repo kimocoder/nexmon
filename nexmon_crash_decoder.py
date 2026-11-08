@@ -26,6 +26,7 @@ Licensed under Apache 2.0 / GPLv2.
 """
 
 import argparse
+import ast
 import glob
 import json
 import os
@@ -35,6 +36,41 @@ import subprocess
 import sys
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple, Any
+
+
+_BINOPS = {
+    ast.Add: lambda a, b: a + b,
+    ast.Sub: lambda a, b: a - b,
+    ast.Mult: lambda a, b: a * b,
+    ast.FloorDiv: lambda a, b: a // b,
+    ast.Div: lambda a, b: a // b,
+    ast.BitAnd: lambda a, b: a & b,
+    ast.BitOr: lambda a, b: a | b,
+    ast.BitXor: lambda a, b: a ^ b,
+    ast.LShift: lambda a, b: a << b,
+    ast.RShift: lambda a, b: a >> b,
+}
+_UNOPS = {
+    ast.UAdd: lambda a: +a,
+    ast.USub: lambda a: -a,
+    ast.Invert: lambda a: ~a,
+}
+
+
+def _safe_int_eval(expr: str) -> int:
+    """Safely evaluate an integer arithmetic expression without eval()."""
+    def _eval_node(n):
+        if isinstance(n, ast.Expression):
+            return _eval_node(n.body)
+        if isinstance(n, ast.Constant) and isinstance(n.value, int):
+            return n.value
+        if isinstance(n, ast.BinOp) and type(n.op) in _BINOPS:
+            return _BINOPS[type(n.op)](_eval_node(n.left), _eval_node(n.right))
+        if isinstance(n, ast.UnaryOp) and type(n.op) in _UNOPS:
+            return _UNOPS[type(n.op)](_eval_node(n.operand))
+        raise ValueError(f"unsupported node: {type(n)}")
+
+    return _eval_node(ast.parse(expr, mode="eval"))
 
 
 # -----------------------------------------------------------------------------
@@ -255,8 +291,8 @@ class ChipTarget:
                                     clean_val = clean_val.replace(f"$({k})", hex(v)).replace(f"${{{k}}}", hex(v))
                             clean_val = re.sub(r"^\$+\(+|\)+$", "", clean_val).strip()
                             try:
-                                if re.match(r"^[0-9a-fA-FxX\s\+\-\*\/\(\)]+$", clean_val):
-                                    self.definitions[key] = int(eval(clean_val, {"__builtins__": None}, {}))  # noqa: S307
+                                if re.match(r"^[0-9a-fA-FxX\s\+\-\*\/\(\)<>&|^~]+$", clean_val):
+                                    self.definitions[key] = _safe_int_eval(clean_val)
                                     continue
                             except Exception:  # noqa: S110
                                 pass
