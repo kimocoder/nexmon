@@ -521,7 +521,7 @@ parse_opt(int key, char *arg, struct argp_state *state)
                 case 'm':
                     get_monitor = false;
                     set_monitor = true;
-                    set_monitor_value = parse_uchar_range(arg, 0, 2, "monitor mode", state);
+                    set_monitor_value = parse_uchar_range(arg, 0, 255, "monitor mode", state);
                     last_optional_opt = 0;
                     break;
                 case 'p':
@@ -887,14 +887,22 @@ main(int argc, char **argv)
         }
 
         custom_cmd_buf = malloc(custom_cmd_buf_len);
-        if (!custom_cmd_buf)
+        if (!custom_cmd_buf) {
+            nex_free(nexio);
             return -1;
+        }
 
         memset(custom_cmd_buf, 0, custom_cmd_buf_len);
 
         if (custom_cmd_set == 1 && raw_output) { // set command using raw input
             //freopen(NULL, "rb", stdin);
-            fread(custom_cmd_buf, 1, custom_cmd_buf_len, stdin);
+            size_t bytes_read = fread(custom_cmd_buf, 1, custom_cmd_buf_len, stdin);
+            if (bytes_read == 0 && ferror(stdin)) {
+                fprintf(stderr, "ERR: failed reading from stdin\n");
+                free(custom_cmd_buf);
+                nex_free(nexio);
+                return -1;
+            }
         } else {
             if (custom_cmd_value) {
                 if (custom_cmd_value_int) {
@@ -902,6 +910,7 @@ main(int argc, char **argv)
                     if (custom_cmd_buf_len < sizeof(uint32)) {
                         fprintf(stderr, "ERR: -v integer needs -l >= 4\n");
                         free(custom_cmd_buf);
+                        nex_free(nexio);
                         return -1;
                     }
                     *(uint32 *) custom_cmd_buf = strtoul(custom_cmd_value, NULL, 0);
@@ -911,6 +920,7 @@ main(int argc, char **argv)
                     if (!decoded) {
                         fprintf(stderr, "ERR: base64 decode of -v failed\n");
                         free(custom_cmd_buf);
+                        nex_free(nexio);
                         return -1;
                     }
                     /* Auto-resize buffer if user did not specify -l */
@@ -919,6 +929,7 @@ main(int argc, char **argv)
                         if (!resized) {
                             free(decoded);
                             free(custom_cmd_buf);
+                            nex_free(nexio);
                             return -1;
                         }
                         custom_cmd_buf = resized;
@@ -930,6 +941,7 @@ main(int argc, char **argv)
                                 decoded_len, custom_cmd_buf_len, decoded_len);
                         free(decoded);
                         free(custom_cmd_buf);
+                        nex_free(nexio);
                         return -1;
                     }
                     memcpy(custom_cmd_buf, decoded, decoded_len);
@@ -945,6 +957,7 @@ main(int argc, char **argv)
                 if (custom_cmd_value_int) {
                     fprintf(stderr, "ERR: -i given without a -v value\n");
                     free(custom_cmd_buf);
+                    nex_free(nexio);
                     return -1;
                 }
             }
@@ -984,8 +997,10 @@ main(int argc, char **argv)
 
     if (dump_objmem) {
         custom_cmd_buf = malloc(custom_cmd_buf_len);
-        if (!custom_cmd_buf)
+        if (!custom_cmd_buf) {
+            nex_free(nexio);
             return -1;
+        }
 
         memset(custom_cmd_buf, 0, custom_cmd_buf_len);
 
@@ -1193,8 +1208,9 @@ main(int argc, char **argv)
         if (fw_ver2 != NULL &&
             (size_t)(fw_ver2 - fw_ver) + 8 < sizeof(fw_ver)) {
             fw_ver2 += 8;
-            if (*fw_ver2 != '\0')
-                fw_ver2[strlen(fw_ver2) - 1] = 0;
+            size_t vlen = strlen(fw_ver2);
+            if (vlen > 0 && (fw_ver2[vlen - 1] == '\n' || fw_ver2[vlen - 1] == '\r'))
+                fw_ver2[vlen - 1] = 0;
         } else {
             fw_ver2 = fw_ver;
         }

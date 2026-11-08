@@ -136,12 +136,21 @@ int main(int argc, char **argv)
         goto fail;
     }
 
+    if (hdr->page_size == 0 || hdr->page_size > 0x100000) {
+        fprintf(stderr,"error: invalid page size %u\n", hdr->page_size);
+        goto fail;
+    }
+
     if(hdr->kernel_size != 0) {
         offset = hdr->page_size;
+        if (offset > (unsigned)file_size || hdr->kernel_size > (unsigned)file_size - offset) {
+            fprintf(stderr, "error: kernel image extends past end of file\n");
+            goto fail;
+        }
         if (save_file(kernel_fn, &((char *)file_data)[offset],
             hdr->kernel_size) != hdr->kernel_size) {
             fprintf(stderr,"error: could not save kernel '%s'\n", kernel_fn);
-            return 1;
+            goto fail;
         }
         printf("kernel written to '%s' (%d bytes)\n", kernel_fn, 
             hdr->kernel_size);
@@ -150,11 +159,15 @@ int main(int argc, char **argv)
     if(hdr->ramdisk_size != 0) {
         offset = ((hdr->kernel_size + 2*hdr->page_size - 1) /
             hdr->page_size) * hdr->page_size;
+        if (offset > (unsigned)file_size || hdr->ramdisk_size > (unsigned)file_size - offset) {
+            fprintf(stderr, "error: ramdisk image extends past end of file\n");
+            goto fail;
+        }
         if (save_file(ramdisk_fn, &((char *)file_data)[offset],
             hdr->ramdisk_size) != hdr->ramdisk_size) {
             fprintf(stderr,"error: could not save ramdisk '%s'\n",
                 ramdisk_fn);
-            return 1;
+            goto fail;
         }
         printf("ramdisk written to '%s' (%d bytes)\n", ramdisk_fn,
             hdr->ramdisk_size);
@@ -163,11 +176,15 @@ int main(int argc, char **argv)
     if(hdr->second_size != 0) {
         offset = ((hdr->kernel_size + hdr->ramdisk_size
             + 2*hdr->page_size - 1) / hdr->page_size) * hdr->page_size;
+        if (offset > (unsigned)file_size || hdr->second_size > (unsigned)file_size - offset) {
+            fprintf(stderr, "error: second bootloader extends past end of file\n");
+            goto fail;
+        }
         if (save_file(second_fn, &((char *)file_data)[offset],
             hdr->second_size) != hdr->second_size) {
             fprintf(stderr,"error: could not save second bootloader '%s'\n",
                 second_fn);
-            return 1;
+            goto fail;
         }
         printf("second bootloader written to '%s' (%d bytes)\n",
             second_fn, hdr->second_size);

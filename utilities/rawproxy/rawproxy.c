@@ -244,9 +244,9 @@ void *check_parent(void *unused)
 		 * PID reuse race where kill(pid,0) would otherwise watch a recycled PID */
 		prctl(PR_SET_PDEATHSIG, SIGTERM);
 		/* Check immediately after setting death signal in case parent already died */
-		if (kill(pid, 0) != 0) exit(EXIT_SUCCESS);
+		if (kill(pid, 0) != 0 && errno == ESRCH) exit(EXIT_SUCCESS);
 		while(1) {
-			if(kill(pid, 0) != 0) {
+			if(kill(pid, 0) != 0 && errno == ESRCH) {
 				exit(EXIT_SUCCESS);
 			} else {
 				sleep(1);

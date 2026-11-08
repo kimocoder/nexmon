@@ -111,13 +111,20 @@ handle_nexmon_place_at_attribute(tree *node, tree name, tree args, int flags, bo
 		}
 	}
 
+#ifdef DEBUG
 	printf("decl_name: %s\n", decl_name);
+#endif
 
 	//printf("attr_name: %s\n", attr_name);
 
 	//printf("align: %d\n", DECL_COMMON_CHECK (*node)->decl_common.align);
 	if (!is_region) {
-		unsigned int max_align_bits = (1U << __builtin_ctz(addr | 0x100U)) * 8U;
+		unsigned int align_addr = addr;
+		if (TREE_CODE(*node) == FUNCTION_DECL)
+			align_addr &= ~1U;
+		unsigned int max_align_bits = (1U << __builtin_ctz(align_addr | 0x100U)) * 8U;
+		if (TREE_CODE(*node) == FUNCTION_DECL && max_align_bits < 16U)
+			max_align_bits = 16U;
 		if (DECL_ALIGN(*node) > max_align_bits) {
 			SET_DECL_ALIGN(*node, max_align_bits);
 			DECL_USER_ALIGN(*node) = 1;
@@ -164,9 +171,9 @@ handle_pragma_targetregion(cpp_reader *dummy)
 {
 	tree message = 0;
 	if (pragma_lex(&message) != CPP_STRING) {
-      	printf ("<#pragma NEXMON targetregion> is not a string");
-      	return;
-    }
+		warning(0, "<#pragma NEXMON targetregion> argument is not a string");
+		return;
+	}
 
  	if (message != NULL_TREE && TREE_CODE(message) == STRING_CST && TREE_STRING_LENGTH (message) > 1) {
 		targetregion = TREE_STRING_POINTER (message);
@@ -185,7 +192,9 @@ static void
 handle_plugin_finish(void *event_data, void *data)
 {
 	if (pre_fp) {
-		fclose(pre_fp);
+		if (fclose(pre_fp) != 0) {
+			fprintf(stderr, "gcc_nexmon_plugin: failed to write pre file\n");
+		}
 		pre_fp = NULL;
 	}
 }
@@ -216,6 +225,11 @@ plugin_init(struct plugin_name_args *info, struct plugin_gcc_version *ver)
 		} else if (!strcmp(info->argv[i].key, "fwver")) {
 			fwver = (unsigned int) strtoul(info->argv[i].value, NULL, 0);
 		}
+	}
+
+	if (!prefile) {
+		fprintf(stderr, "gcc_nexmon_plugin: prefile argument required!\n");
+		return 1;
 	}
 
 	pre_fp = fopen(prefile, "a");

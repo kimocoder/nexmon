@@ -17,17 +17,22 @@ NATIVE_BUILD :=
 endif
 endif
 
-all: libs/armeabi/libnexio.a
+all: libnexio.a
 
 ifeq ($(NATIVE_BUILD),)
-libs/armeabi/libnexio.a: Android.mk
+libnexio.a: Android.mk
 	$(NDK_ROOT)/ndk-build NDK_APPLICATION_MK=`pwd`/Application.mk NDK_APP_OUT=. TARGET_PLATFORM=android-21 $(if $(APP_ABI),APP_ABI=$(APP_ABI))
+	@if [ -f local/$(if $(APP_ABI),$(firstword $(APP_ABI)),arm64-v8a)/libnexio.a ]; then \
+		cp -f local/$(if $(APP_ABI),$(firstword $(APP_ABI)),arm64-v8a)/libnexio.a ./libnexio.a; \
+	elif [ -f local/armeabi-v7a/libnexio.a ]; then \
+		cp -f local/armeabi-v7a/libnexio.a ./libnexio.a; \
+	fi
 else
-libs/armeabi/libnexio.a: libnexio.c
+libnexio.a: libnexio.c
 ifeq ($(USE_VENDOR_CMD),1)
-	$(CC) $(CFLAGS) -c libnexio.c -o libnexio.o -DUSE_VENDOR_CMD -DVERSION=\"$(GIT_VERSION)\" -I../../patches/include $(shell pkg-config --cflags --libs libnl-3.0 libnl-genl-3.0 2>/dev/null)
+	$(CC) $(CFLAGS) -fPIC -c libnexio.c -o libnexio.o -DUSE_VENDOR_CMD -DVERSION=\"$(GIT_VERSION)\" -I../../patches/include $(shell pkg-config --cflags --libs libnl-3.0 libnl-genl-3.0 2>/dev/null)
 else
-	$(CC) $(CFLAGS) -std=gnu11 -fcommon -c libnexio.c -o libnexio.o -DBUILD_ON_RPI -DVERSION=\"$(GIT_VERSION)\" -I../../patches/include
+	$(CC) $(CFLAGS) -std=gnu11 -fcommon -fPIC -c libnexio.c -o libnexio.o -DBUILD_ON_RPI -DVERSION=\"$(GIT_VERSION)\" -I../../patches/include
 	$(CC) $(CFLAGS) $(LDFLAGS) -shared -fPIC -std=gnu11 -fcommon -DBUILD_ON_RPI -DVERSION=\"$(GIT_VERSION)\" -I../nexutil/include -I../../patches/include libnexio.c ../nexutil/bcmwifi_channels.c ../nexutil/bcmutils.c -o libnexio.so
 endif
 	$(AR) rcs libnexio.a libnexio.o

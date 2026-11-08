@@ -103,9 +103,10 @@ void *check_parent(void *unused)
 {
 	(void) unused;
 	if(pid != -1) {
-		if (kill(pid, 0) != 0) exit(EXIT_SUCCESS);
+		prctl(PR_SET_PDEATHSIG, SIGTERM);
+		if (kill(pid, 0) != 0 && errno == ESRCH) exit(EXIT_SUCCESS);
 		while(1) {
-			if(kill(pid, 0) != 0) {
+			if(kill(pid, 0) != 0 && errno == ESRCH) {
 				exit(EXIT_SUCCESS);
 			} else {
 				sleep(1);
@@ -159,11 +160,14 @@ main(int argc, char **argv)
 	sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if(sock < 0) {
 		perror("ERR: socket");
+		pcap_close(handle);
 		exit(EXIT_FAILURE);
 	}
 	setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 	if(bind(sock, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
 		perror("ERR: bind");
+		close(sock);
+		pcap_close(handle);
 		exit(EXIT_FAILURE);
 	}
 
@@ -173,8 +177,13 @@ main(int argc, char **argv)
 		/* a negative length must never reach pcap_inject(): its length
 		 * argument is size_t, so -1 would become SIZE_MAX and read far past
 		 * the packet buffer */
-		if(recv_len < 0) {
-			perror("ERR: recvfrom");
+		if(recv_len <= 0) {
+			if (recv_len < 0) {
+				if (errno == EINTR || errno == EAGAIN)
+					continue;
+				perror("ERR: recvfrom");
+				sleep(1);
+			}
 			continue;
 		}
 		if((size_t) recv_len > sizeof(packet)) {

@@ -312,7 +312,7 @@ static void write_file(const char *name, uint8_t *buf, uint32_t len,
 		fprintf(stderr, "name too long");
 		exit(2);
 	}
-	f = fopen(nbuf, "w");
+	f = fopen(nbuf, "wb");
 	if (!f) {
 		perror("failed to open file");
 		exit(2);

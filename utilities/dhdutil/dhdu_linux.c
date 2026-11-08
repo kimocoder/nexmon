@@ -129,8 +129,10 @@ static int __dhd_driver_io(void *dhd, dhd_ioctl_t *ioc)
 		syserr("socket");
 
 	ret = ioctl(s, SIOCDEVPRIVATE, ifr);
-	if (ret < 0 && errno != EAGAIN)
+	if (ret < 0 && errno != EAGAIN) {
+		close(s);
 		syserr(__FUNCTION__);
+	}
 
 	/* cleanup */
 	close(s);
@@ -213,8 +215,10 @@ dhd_get_dev_type(char *name, void *buf, size_t buflen, char *type)
 	snprintf(ifr.ifr_name, sizeof(ifr.ifr_name), "%s", name ? name : "");
 	if ((ret = ioctl(s, SIOCETHTOOL, &ifr)) < 0) {
 
-		if (errno != EAGAIN)
+		if (errno != EAGAIN) {
+			close(s);
 			syserr(__FUNCTION__);
+		}
 
 		*(char *)buf = '\0';
 	}
@@ -465,6 +469,7 @@ main(int argc, char **argv)
 		return -1;
 
 	av0 = argv[0];
+	dhdu_av0 = argv[0];
 	memset(&ifr, 0, sizeof(ifr));
 	argv++;
 

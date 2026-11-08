@@ -117,12 +117,13 @@ int ioctl (int fd, request_t request, ...){
                 if (!strncmp(p_ifr->ifr_ifrn.ifrn_name, ifname, IFNAMSIZ)) {
                     _libfakeioctl_ensure_init();
                     if (nex_ioctl(nexio, WLC_GET_MONITOR, &buf, sizeof(buf), false) == 0) {
-                        if (buf & MONITOR_IEEE80211)
-                            p_ifr->ifr_hwaddr.sa_family = ARPHRD_IEEE80211;
-                        else if (buf & MONITOR_RADIOTAP)
+                        if (buf & MONITOR_RADIOTAP)
                             p_ifr->ifr_hwaddr.sa_family = ARPHRD_IEEE80211_RADIOTAP;
+                        else if (buf & MONITOR_IEEE80211)
+                            p_ifr->ifr_hwaddr.sa_family = ARPHRD_IEEE80211;
                         else if (buf == MONITOR_DISABLED || (buf & (MONITOR_LOG_ONLY | MONITOR_DROP_FRM | MONITOR_IPV4_UDP)))
                             p_ifr->ifr_hwaddr.sa_family = ARPHRD_ETHER;
+                        ret = 0;
                     }
                 }
             }

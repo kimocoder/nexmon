@@ -330,7 +330,7 @@ cmd_t dhd_cmds[] = {
 };
 
 cmd_t dhd_varcmd = {"var", dhd_varint, -1, -1, "unrecognized name, type -h for help"};
-char *dhdu_av0;
+char *dhdu_av0 = "dhdutil";
 
 #if defined(BWL_FILESYSTEM_SUPPORT)
 static int
@@ -519,7 +519,7 @@ int
 dhd_check(void *dhd)
 {
 	int ret;
-	int val;
+	int val = 0;
 
 	if ((ret = dhd_get(dhd, DHD_GET_MAGIC, &val, sizeof(int))) < 0)
 		return ret;
@@ -567,15 +567,24 @@ dhd_hexdump(uchar *buf, uint nbytes, uint saddr)
 	p = line;
 	for (i = 0; i < nbytes; i++) {
 		if (i % 16 == 0) {
-			p += sprintf(p, "%08x: ", saddr + i);	/* line prefix */
+			int n = snprintf(p, sizeof(line) - (p - line), "%08x: ", saddr + i);
+			if (n > 0 && (size_t)n < sizeof(line) - (p - line))
+				p += n;
 		}
-		p += sprintf(p, "%02x ", buf[i]);
+		int n = snprintf(p, sizeof(line) - (p - line), "%02x ", buf[i]);
+		if (n > 0 && (size_t)n < sizeof(line) - (p - line))
+			p += n;
 		if (i % 16 == 15) {
 			uint j;
-			p += sprintf(p, "  ");
-			for (j = i-15; j <= i; j++)
-				p += sprintf(p, "%c",
+			int n2 = snprintf(p, sizeof(line) - (p - line), "  ");
+			if (n2 > 0 && (size_t)n2 < sizeof(line) - (p - line))
+				p += n2;
+			for (j = i-15; j <= i; j++) {
+				int n3 = snprintf(p, sizeof(line) - (p - line), "%c",
 				             ((buf[j] >= 0x20 && buf[j] <= 0x7f) ? buf[j] : '.'));
+				if (n3 > 0 && (size_t)n3 < sizeof(line) - (p - line))
+					p += n3;
+			}
 			printf("%s\n", line);		/* flush line */
 			p = line;
 		}
@@ -1959,7 +1968,7 @@ dhd_dldn(void *dhd, cmd_t *cmd, char **argv)
 	uint32 start;
 	int ret = 0;
 	int fsize;
-	int fd = 0;
+	int dldn_started = 0;
 
 	FILE *fp = NULL;
 	uint32 ramsize;
@@ -2000,11 +2009,11 @@ dhd_dldn(void *dhd, cmd_t *cmd, char **argv)
 		}
 	}
 
-	fd = dhd_set(dhd, DHD_DLDN_ST, NULL, 0);
-	if (fd < 0) {
+	if (dhd_set(dhd, DHD_DLDN_ST, NULL, 0) < 0) {
 		ret = -1;
 		goto exit;
 	}
+	dldn_started = 1;
 
 	/* validate arguments */
 	if (!fname) {
@@ -2068,7 +2077,7 @@ exit:
 	if (fp)
 		fclose(fp);
 
-	if (fd)
+	if (dldn_started)
 		ret = dhd_set(dhd, DHD_DLDN_END, NULL, 0);
 
 	return ret;
@@ -2738,11 +2747,11 @@ ver2str(unsigned int vms, unsigned int vls)
 		month = vms & 0xFFFF;
 		day = (vls >> 16) & 0xFFFF;
 		build = vls & 0xFFFF;
-		sprintf(verstr, "%d/%d/%d build %d",
+		snprintf(verstr, sizeof(verstr), "%d/%d/%d build %d",
 			month, day, year, build);
 	} else {
 		/* it is a tagged release. */
-		sprintf(verstr, "%d.%d RC%d.%d",
+		snprintf(verstr, sizeof(verstr), "%d.%d RC%d.%d",
 			(vms>>16)&0xFFFF, vms&0xFFFF,
 			(vls>>16)&0xFFFF, vls&0xFFFF);
 	}
@@ -2806,7 +2815,11 @@ dhd_var_setint(void *dhd, cmd_t *cmd, char **argv)
 		return BCME_USAGE_ERROR;
 	}
 
-	strcpy(buf, varname);
+	if (!varname || strlen(varname) >= sizeof(buf) - sizeof(uint) - 1)
+		return BCME_BUFTOOSHORT;
+
+	strncpy(buf, varname, sizeof(buf) - sizeof(uint) - 1);
+	buf[sizeof(buf) - sizeof(uint) - 1] = '\0';
 	p = buf;
 	while (*p != '\0') {
 		*p = tolower(*p);
@@ -2842,7 +2855,11 @@ dhd_var_get(void *dhd, cmd_t *cmd, char **argv)
 		return BCME_USAGE_ERROR;
 	}
 
-	strcpy(buf, varname);
+	if (!varname || strlen(varname) >= sizeof(buf) - sizeof(uint) - 1)
+		return BCME_BUFTOOSHORT;
+
+	strncpy(buf, varname, sizeof(buf) - sizeof(uint) - 1);
+	buf[sizeof(buf) - sizeof(uint) - 1] = '\0';
 	p = buf;
 	while (*p != '\0') {
 		*p = tolower(*p);
@@ -2913,8 +2930,12 @@ dhd_var_getbuf(void *dhd, char *iovar, void *param, int param_len, void **bufptr
 {
 	int len;
 
+	if (!iovar || strlen(iovar) + 1 + (size_t)param_len > sizeof(buf))
+		return BCME_BUFTOOSHORT;
+
 	memset(buf, 0, DHD_IOCTL_MAXLEN);
-	strcpy(buf, iovar);
+	strncpy(buf, iovar, sizeof(buf) - 1);
+	buf[sizeof(buf) - 1] = '\0';
 
 	/* include the NUL */
 	len = strlen(iovar) + 1;
@@ -2932,8 +2953,12 @@ dhd_var_setbuf(void *dhd, char *iovar, void *param, int param_len)
 {
 	int len;
 
+	if (!iovar || strlen(iovar) + 1 + (size_t)param_len > sizeof(buf))
+		return BCME_BUFTOOSHORT;
+
 	memset(buf, 0, DHD_IOCTL_MAXLEN);
-	strcpy(buf, iovar);
+	strncpy(buf, iovar, sizeof(buf) - 1);
+	buf[sizeof(buf) - 1] = '\0';
 
 	/* include the NUL */
 	len = strlen(iovar) + 1;

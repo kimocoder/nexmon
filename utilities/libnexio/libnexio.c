@@ -1681,7 +1681,7 @@ nex_read_d11_template_ram(struct nexio *nexio, unsigned int offset, void *buf, u
 
     if (!nexio || !buf || len == 0)
         return -EINVAL;
-    if (len > sizeof(req.data) || offset + len > 0x800)
+    if (len > sizeof(req.data) || offset >= 0x800 || len > 0x800 - offset)
         return -EINVAL;
 
     memset(&req, 0, sizeof(req));
@@ -1706,7 +1706,7 @@ nex_write_d11_template_ram(struct nexio *nexio, unsigned int offset, const void 
 
     if (!nexio || !buf || len == 0)
         return -EINVAL;
-    if (len > sizeof(req.data) || offset + len > 0x800)
+    if (len > sizeof(req.data) || offset >= 0x800 || len > 0x800 - offset)
         return -EINVAL;
 
     memset(&req, 0, sizeof(req));

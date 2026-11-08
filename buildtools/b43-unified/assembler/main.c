@@ -1741,6 +1741,10 @@ static void assemble_instructions(struct assembler_context *ctx)
 		struct operlist ol;
 		struct operand oper;
 
+		memset(&sjmp, 0, sizeof(sjmp));
+		memset(&ol, 0, sizeof(ol));
+		memset(&oper, 0, sizeof(oper));
+
 		oper.type = OPER_LABEL;
 		oper.u.label = ctx->start_label;
 		ol.oper[0] = &oper;
