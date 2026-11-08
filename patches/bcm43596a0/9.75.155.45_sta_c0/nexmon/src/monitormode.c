@@ -81,6 +81,7 @@ wl_monitor_radiotap(struct wl_info *wl, struct wl_rxsts *sts, struct sk_buff *p,
     // We figured out that frames larger than 2032 will not arrive in user space
     if (p_len_new > 2032) {
         printf("ERR: frame too large\n");
+        pkt_buf_free_skb(osh, p, 0);
         return;
     } else {
         p_new = pkt_buf_get_skb(osh, p_len_new);
@@ -88,6 +89,7 @@ wl_monitor_radiotap(struct wl_info *wl, struct wl_rxsts *sts, struct sk_buff *p,
 
     if (!p_new) {
         printf("ERR: no free sk_buff\n");
+        pkt_buf_free_skb(osh, p, 0);
         return;
     }
 
@@ -136,6 +138,7 @@ wl_monitor_radiotap(struct wl_info *wl, struct wl_rxsts *sts, struct sk_buff *p,
         printf("ERR: xmit null, dropping frame\n");
         pkt_buf_free_skb(osh, p_new, 0);
     }
+    pkt_buf_free_skb(osh, p, 0);
 }
 
 void
@@ -153,9 +156,13 @@ wl_monitor_hook(struct wl_info *wl, struct wl_rxsts *sts, struct sk_buff *p) {
 
         case MONITOR_LOG_ONLY:
                 printf("frame received\n");
+                if (p)
+                    pkt_buf_free_skb(wl->wlc->osh, p, 0);
             break;
 
         case MONITOR_DROP_FRM:
+                if (p)
+                    pkt_buf_free_skb(wl->wlc->osh, p, 0);
             break;
 
         case MONITOR_IPV4_UDP:

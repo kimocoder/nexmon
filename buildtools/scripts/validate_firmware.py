@@ -702,7 +702,22 @@ class FirmwareValidator:
                     f"BCM43438/BCM43430a1 parity mismatch: '{f}' defined for BCM43430a1 on {primary_shared} but missing on BCM43438"
                 )
 
-        # 4. Target-specific collision check (when target chip & fw are known)
+        # 4. Intra-chip FW_VER_ALL address conflict check
+        func_chip_fws: Dict[Tuple[str, int], Dict[str, int]] = defaultdict(dict)
+        for b in bindings:
+            if b["chip_num"] >= 0:
+                func_chip_fws[(b["func"], b["chip_num"])][b["fw"]] = b["addr"]
+        for (f, c_num), fws in sorted(func_chip_fws.items()):
+            if "FW_VER_ALL" in fws and len(fws) > 1:
+                all_addr = fws["FW_VER_ALL"]
+                for fw, addr in sorted(fws.items()):
+                    if fw != "FW_VER_ALL" and addr != all_addr:
+                        errors.append(
+                            f"Wrapper FW_VER_ALL address conflict for '{f}': chip_id={c_num} defines "
+                            f"FW_VER_ALL at 0x{all_addr:X} but {fw} defines conflicting address 0x{addr:X}"
+                        )
+
+        # 5. Target-specific collision check (when target chip & fw are known)
         if target_chip and target_fw:
             t_cnum = chip_defs.get(target_chip)
             t_fwnum = fw_defs.get(target_fw)

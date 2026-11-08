@@ -259,6 +259,70 @@ class TestFirmwareValidator(unittest.TestCase):
         self.assertEqual(res_req.returncode, 1)
         self.assertIn("FAILING build validation", res_req.stdout)
 
+    def test_wrapper_fw_ver_all_conflict_detected(self):
+        """Conflicting FW_VER_ALL and specific version on same chip must be caught."""
+        with tempfile.TemporaryDirectory(prefix="nexmon-test-wrapper-") as tmp:
+            fw_h = Path(tmp) / "firmware_version.h"
+            fw_h.write_text(
+                "#define CHIP_VER_BCM43455c0 14\n"
+                "#define FW_VER_ALL 0\n"
+                "#define FW_VER_7_45_154 44\n"
+            )
+            wrap_c = Path(tmp) / "wrapper.c"
+            wrap_c.write_text(
+                "AT(CHIP_VER_BCM43455c0, FW_VER_ALL, 0x9BE1C)\n"
+                "AT(CHIP_VER_BCM43455c0, FW_VER_7_45_154, 0x19A098)\n"
+                "int memcpy(void *d, void *s, int len) { return 0; }\n"
+            )
+            errors = FirmwareValidator.check_wrapper_integrity(str(wrap_c), str(fw_h))
+            self.assertTrue(
+                any("Wrapper FW_VER_ALL address conflict" in e and "memcpy" in e for e in errors),
+                errors,
+            )
+
+    def test_monitormode_free_skb_backported(self):
+        """All 21 legacy/monitormode targets must backport pkt_buf_free_skb to prevent leaks."""
+        import glob
+        pattern = os.path.join(NEXMON_ROOT, "patches", "**", "monitormode.c")
+        targets = [
+            p for p in glob.glob(pattern, recursive=True)
+            if "nonsense" not in p and "bcm4375b1" not in p and "13_38_55_1_sta" not in p
+        ]
+        self.assertGreaterEqual(len(targets), 20)
+        for t in targets:
+            content = Path(t).read_text(encoding="utf-8", errors="replace")
+            self.assertIn(
+                "pkt_buf_free_skb",
+                content,
+                f"monitormode target {t} is missing pkt_buf_free_skb()",
+            )
+
+    def test_firmware_linker_regions_no_overlaps(self):
+        """Ensure all generated memory.ld files have zero region overlaps."""
+        import glob
+        import re
+        ld_files = glob.glob(os.path.join(NEXMON_ROOT, "patches", "**", "memory.ld"), recursive=True)
+        self.assertGreater(len(ld_files), 10)
+        for ld in ld_files:
+            regions = {}
+            with open(ld, "r", encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    m = re.match(r"(\w+)\s*:\s*ORIGIN\s*=\s*(0x[0-9a-fA-F]+),\s*LENGTH\s*=\s*(0x[0-9a-fA-F]+)", line)
+                    if m:
+                        name, orig, length = m.group(1), int(m.group(2), 16), int(m.group(3), 16)
+                        regions[name] = (orig, orig + length)
+            if "ucode" in regions:
+                u_start, u_end = regions["ucode"]
+                for other in ["fpconfig", "patch"]:
+                    if other in regions:
+                        o_start, o_end = regions[other]
+                        if u_start < o_start:
+                            self.assertLessEqual(
+                                u_end,
+                                o_start,
+                                f"In {ld}: ucode [0x{u_start:X}, 0x{u_end:X}) overlaps {other} starting at 0x{o_start:X}",
+                            )
+
 
 if __name__ == "__main__":
     unittest.main()

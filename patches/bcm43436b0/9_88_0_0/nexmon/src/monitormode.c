@@ -54,8 +54,16 @@
 void
 wl_monitor_radiotap(struct wl_info *wl, struct wl_rxsts *sts, struct sk_buff *p) {
     struct sk_buff *p_new = pkt_buf_get_skb(wl->wlc->osh, p->len + sizeof(struct nexmon_radiotap_header));
-    struct nexmon_radiotap_header *frame = (struct nexmon_radiotap_header *) p_new->data;
+    struct nexmon_radiotap_header *frame;
     uint32 tsf_l, tsf_h;
+
+    if (p_new == 0) {
+        printf("ERR: no free sk_buff\n");
+        pkt_buf_free_skb(wl->wlc->osh, p, 0);
+        return;
+    }
+
+    frame = (struct nexmon_radiotap_header *) p_new->data;
     wlc_bmac_read_tsf(wl->wlc_hw, &tsf_l, &tsf_h);
     frame->header.it_version = 0;
     frame->header.it_pad = 0;
@@ -81,6 +89,7 @@ wl_monitor_radiotap(struct wl_info *wl, struct wl_rxsts *sts, struct sk_buff *p)
     } else {
         wl->dev->chained->funcs->xmit(wl->dev, wl->dev->chained, p_new);
     }
+    pkt_buf_free_skb(wl->wlc->osh, p, 0);
 }
 
 void
@@ -95,6 +104,7 @@ wl_monitor_orig(struct wl_info *wl, struct wl_rxsts *sts, struct sk_buff *p) {
     uint len = p->len - 6;
     if (!(mon_pkt = (struct sk_buff *)pkt_buf_get_skb(osh, len))) {
         printf("%s: failed to get mon pkt\n", __FUNCTION__);
+        pkt_buf_free_skb(osh, p, 0);
         return;
     }
     memcpy(mon_pkt->data, p->data + 6, len);
@@ -105,6 +115,7 @@ wl_monitor_orig(struct wl_info *wl, struct wl_rxsts *sts, struct sk_buff *p) {
     mon_pkttag32[4] = pkttag32[4]; // rspec
     
     wl_sendup(wl, 0, mon_pkt);
+    pkt_buf_free_skb(osh, p, 0);
 }
 
 void
@@ -121,9 +132,13 @@ wl_monitor_hook(struct wl_info *wl, struct wl_rxsts *sts, struct sk_buff *p) {
 
         case MONITOR_LOG_ONLY:
                 printf("frame received\n");
+                if (p)
+                    pkt_buf_free_skb(wl->wlc->osh, p, 0);
             break;
 
         case MONITOR_DROP_FRM:
+                if (p)
+                    pkt_buf_free_skb(wl->wlc->osh, p, 0);
             break;
 
         case MONITOR_IPV4_UDP:

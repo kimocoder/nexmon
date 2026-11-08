@@ -65,6 +65,7 @@ wl_monitor_radiotap(struct wl_info *wl, struct wl_rxsts *sts, struct sk_buff *p)
      */
     if (p_new == 0) {
         printf("ERR: no free sk_buff\n");
+        pkt_buf_free_skb(wl->wlc->osh, p, 0);
         return;
     }
 
@@ -94,6 +95,7 @@ wl_monitor_radiotap(struct wl_info *wl, struct wl_rxsts *sts, struct sk_buff *p)
         wl->wlc->wlcif_list->wlif->dev->chained->funcs->xmit(wl->wlc->wlcif_list->wlif->dev, wl->wlc->wlcif_list->wlif->dev->chained, p_new);
     else
         wl->dev->chained->funcs->xmit(wl->dev, wl->dev->chained, p_new);
+    pkt_buf_free_skb(wl->wlc->osh, p, 0);
 }
 
 void
@@ -109,9 +111,13 @@ wl_monitor_hook(struct wl_info *wl, struct wl_rxsts *sts, struct sk_buff *p) {
 
         case MONITOR_LOG_ONLY:
                 printf("frame received\n");
+                if (p)
+                    pkt_buf_free_skb(wl->wlc->osh, p, 0);
             break;
 
         case MONITOR_DROP_FRM:
+                if (p)
+                    pkt_buf_free_skb(wl->wlc->osh, p, 0);
             break;
 
         case MONITOR_IPV4_UDP:
