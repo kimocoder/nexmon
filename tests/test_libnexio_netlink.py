@@ -121,6 +121,12 @@ class TestLibnexioNetlinkUDP(unittest.TestCase):
         text = (ROOT / "utilities/libnexio/libnexio.c").read_text()
         self.assertIn("not running as root", text.lower())
 
+    def test_nex_init_udp_bind_inaddr_any(self):
+        # Ensure rx_ioctl socket binds to INADDR_ANY rather than 255.255.255.255 (which fails with EADDRNOTAVAIL)
+        text = (ROOT / "utilities/libnexio/libnexio.c").read_text()
+        self.assertIn("sin_rx_ioctl.sin_addr.s_addr = htonl(INADDR_ANY);", text)
+        self.assertNotIn("sin_rx_ioctl.sin_addr.s_addr = IPADDR(255,255,255,255);", text)
+
     def test_nex_ioctl_timeout(self):
         # Check that nex_ioctl has timeout handling via SO_RCVTIMEO
         text = (ROOT / "utilities/libnexio/libnexio.c").read_text()

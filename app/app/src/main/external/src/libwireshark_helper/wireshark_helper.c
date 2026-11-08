@@ -377,8 +377,10 @@ Java_de_tu_1darmstadt_seemoo_nexmon_sharky_Packet_wiresharkGetAll(JNIEnv* env, j
 	    &data);
 
 	str_cls = (*env)->FindClass(env, "java/lang/String");
-	if (str_cls != NULL)
+	if (str_cls != NULL) {
 		fields = (*env)->NewObjectArray(env, (jsize)data.num_fields, str_cls, 0);
+		(*env)->DeleteLocalRef(env, str_cls);
+	}
 #ifdef VERBOSE
   __android_log_print(ANDROID_LOG_INFO, LOG_TAG, "Dissected with %d fields\n", data.num_fields);
 #endif
@@ -389,7 +391,10 @@ Java_de_tu_1darmstadt_seemoo_nexmon_sharky_Packet_wiresharkGetAll(JNIEnv* env, j
 		str_list_item *old;
 		if (fields != NULL && x < data.num_fields && item->str != NULL) {
 			jstring strt = (*env)->NewStringUTF(env, item->str);
-			(*env)->SetObjectArrayElement(env, fields, x, strt);
+			if (strt != NULL) {
+				(*env)->SetObjectArrayElement(env, fields, x, strt);
+				(*env)->DeleteLocalRef(env, strt);
+			}
 		}
 		free(item->str);
 		old = item;

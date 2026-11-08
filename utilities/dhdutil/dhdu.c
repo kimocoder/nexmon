@@ -392,7 +392,7 @@ dhd_option(char ***pargv, char **pifname, int *phelp)
 			int_fmt = INT_FMT_HEX;
 
 		/* command usage */
-		else if (!strcmp(*argv, "-h"))
+		else if (!strcmp(*argv, "-h") || !strcmp(*argv, "--help"))
 			help = TRUE;
 
 		/* done with generic options */
@@ -427,52 +427,87 @@ static int
 dhd_list(void *dhd, cmd_t *garb, char **argv)
 {
 	cmd_t *cmd;
-	int nrows, i, len;
-	char *buf;
-	int letter, col, row, pad;
+	int total = 0, nrows, letter, col, row;
+	const char **grid;
 
 	UNUSED_PARAMETER(dhd);
 	UNUSED_PARAMETER(garb);
 	UNUSED_PARAMETER(argv);
 
-	for (cmd = dhd_cmds, nrows = 0; cmd->name; cmd++)
-		    nrows++;
+	for (cmd = dhd_cmds; cmd->name; cmd++)
+		total++;
 
-	nrows /= 4;
-	nrows++;
+	if (total == 0)
+		return 0;
 
-	len = nrows * 80 + 2;
-	buf = malloc(len);
-	if (buf == NULL) {
-		fprintf(stderr, "Failed to allocate buffer of %d bytes\n", len);
+	nrows = (total + 3) / 4;
+	grid = (const char **)calloc(nrows * 4, sizeof(const char *));
+	if (grid == NULL) {
+		fprintf(stderr, "Failed to allocate command grid for %d commands\n", total);
 		return BCME_NOMEM;
 	}
-	for (i = 0; i < len; i++)
-		*(buf+i) = 0;
 
 	row = col = 0;
-	for (letter = 'a'; letter < 'z'; letter++) {
+	for (letter = 'a'; letter <= 'z'; letter++) {
 		for (cmd = dhd_cmds; cmd->name; cmd++) {
 			if (cmd->name[0] == letter || cmd->name[0] == letter - 0x20) {
-				strcat(buf+row*80, cmd->name);
-				pad = 18 * (col + 1) - strlen(buf+row*80);
-				if (pad < 1)
-					pad = 1;
-				for (; pad; pad--)
-					strcat(buf+row*80, " ");
-				row++;
-				if (row == nrows) {
-					col++; row = 0;
+				if (row < nrows && col < 4) {
+					grid[row * 4 + col] = cmd->name;
+					row++;
+					if (row == nrows) {
+						col++;
+						row = 0;
+					}
 				}
 			}
 		}
 	}
-	for (row = 0; row < nrows; row++)
-		printf("%s\n", buf+row*80);
+
+	/* Also capture any non-alphabetic commands if present */
+	for (cmd = dhd_cmds; cmd->name; cmd++) {
+		char c = cmd->name[0];
+		if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))) {
+			if (row < nrows && col < 4) {
+				grid[row * 4 + col] = cmd->name;
+				row++;
+				if (row == nrows) {
+					col++;
+					row = 0;
+				}
+			}
+		}
+	}
+
+	for (row = 0; row < nrows; row++) {
+		char line[256];
+		int pos = 0;
+		line[0] = '\0';
+		for (col = 0; col < 4; col++) {
+			const char *name = grid[row * 4 + col];
+			int pad;
+			if (!name)
+				continue;
+			pos += snprintf(line + pos, sizeof(line) - pos, "%s", name);
+			if (pos >= (int)sizeof(line) - 1)
+				break;
+			pad = 18 * (col + 1) - pos;
+			if (pad < 1)
+				pad = 1;
+			if (col < 3) {
+				while (pad-- > 0 && pos < (int)sizeof(line) - 1)
+					line[pos++] = ' ';
+				line[pos] = '\0';
+			}
+		}
+		while (pos > 0 && line[pos - 1] == ' ')
+			line[--pos] = '\0';
+
+		printf("%s\n", line);
+	}
 
 	printf("\n");
-	free(buf);
-	return (0);
+	free(grid);
+	return 0;
 }
 
 void
@@ -2815,11 +2850,11 @@ dhd_var_setint(void *dhd, cmd_t *cmd, char **argv)
 		return BCME_USAGE_ERROR;
 	}
 
-	if (!varname || strlen(varname) >= sizeof(buf) - sizeof(uint) - 1)
+	if (!varname || strlen(varname) >= sizeof(bufstruct_dhd.bufdata) - sizeof(uint) - 1)
 		return BCME_BUFTOOSHORT;
 
-	strncpy(buf, varname, sizeof(buf) - sizeof(uint) - 1);
-	buf[sizeof(buf) - sizeof(uint) - 1] = '\0';
+	strncpy(buf, varname, sizeof(bufstruct_dhd.bufdata) - sizeof(uint) - 1);
+	buf[sizeof(bufstruct_dhd.bufdata) - sizeof(uint) - 1] = '\0';
 	p = buf;
 	while (*p != '\0') {
 		*p = tolower(*p);
@@ -2855,11 +2890,11 @@ dhd_var_get(void *dhd, cmd_t *cmd, char **argv)
 		return BCME_USAGE_ERROR;
 	}
 
-	if (!varname || strlen(varname) >= sizeof(buf) - sizeof(uint) - 1)
+	if (!varname || strlen(varname) >= sizeof(bufstruct_dhd.bufdata) - sizeof(uint) - 1)
 		return BCME_BUFTOOSHORT;
 
-	strncpy(buf, varname, sizeof(buf) - sizeof(uint) - 1);
-	buf[sizeof(buf) - sizeof(uint) - 1] = '\0';
+	strncpy(buf, varname, sizeof(bufstruct_dhd.bufdata) - sizeof(uint) - 1);
+	buf[sizeof(bufstruct_dhd.bufdata) - sizeof(uint) - 1] = '\0';
 	p = buf;
 	while (*p != '\0') {
 		*p = tolower(*p);
@@ -2930,12 +2965,12 @@ dhd_var_getbuf(void *dhd, char *iovar, void *param, int param_len, void **bufptr
 {
 	int len;
 
-	if (!iovar || strlen(iovar) + 1 + (size_t)param_len > sizeof(buf))
+	if (!iovar || strlen(iovar) + 1 + (size_t)param_len > sizeof(bufstruct_dhd.bufdata))
 		return BCME_BUFTOOSHORT;
 
 	memset(buf, 0, DHD_IOCTL_MAXLEN);
-	strncpy(buf, iovar, sizeof(buf) - 1);
-	buf[sizeof(buf) - 1] = '\0';
+	strncpy(buf, iovar, sizeof(bufstruct_dhd.bufdata) - 1);
+	buf[sizeof(bufstruct_dhd.bufdata) - 1] = '\0';
 
 	/* include the NUL */
 	len = strlen(iovar) + 1;
@@ -2953,12 +2988,12 @@ dhd_var_setbuf(void *dhd, char *iovar, void *param, int param_len)
 {
 	int len;
 
-	if (!iovar || strlen(iovar) + 1 + (size_t)param_len > sizeof(buf))
+	if (!iovar || strlen(iovar) + 1 + (size_t)param_len > sizeof(bufstruct_dhd.bufdata))
 		return BCME_BUFTOOSHORT;
 
 	memset(buf, 0, DHD_IOCTL_MAXLEN);
-	strncpy(buf, iovar, sizeof(buf) - 1);
-	buf[sizeof(buf) - 1] = '\0';
+	strncpy(buf, iovar, sizeof(bufstruct_dhd.bufdata) - 1);
+	buf[sizeof(bufstruct_dhd.bufdata) - 1] = '\0';
 
 	/* include the NUL */
 	len = strlen(iovar) + 1;

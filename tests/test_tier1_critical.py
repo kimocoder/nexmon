@@ -399,6 +399,8 @@ class TestC07AndroidJniHardening(unittest.TestCase):
         self.assertIn("item->str = malloc(512);", ws_c)
         self.assertNotIn("item->str = malloc(256);", ws_c)
         self.assertIn("(chop_len <= dlen)", ws_c)
+        self.assertIn("(*env)->DeleteLocalRef(env, strt);", ws_c)
+        self.assertIn("(*env)->DeleteLocalRef(env, str_cls);", ws_c)
 
         # wrapper_pentestsuite.c returns jstring via NewStringUTF, heap-allocates frameBytes, and zero-inits my_message
         self.assertNotIn('return "nothing";', wrap_c)

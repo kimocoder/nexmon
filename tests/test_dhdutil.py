@@ -54,6 +54,18 @@ class TestDhdutilBuild(unittest.TestCase):
                         if "strtol" not in "\n".join(lines[max(0,i-10):i+10]):
                             self.fail(f"dhdutil membytes at line {i+1} uses atoi without strtol validation")
 
+    def test_dhdu_sizeof_buf_fix(self):
+        # Regression: ensure sizeof(buf) pointer size bug is fixed in dhdu.c
+        text = (ROOT / "utilities/dhdutil/dhdu.c").read_text(errors="replace")
+        self.assertNotIn("sizeof(buf)", text)
+        self.assertIn("sizeof(bufstruct_dhd.bufdata)", text)
+
+    def test_dhd_list_bounds_and_alphabet(self):
+        # Ensure dhd_list iterates through all letters including 'z' and uses bounded grid
+        text = (ROOT / "utilities/dhdutil/dhdu.c").read_text(errors="replace")
+        self.assertIn("letter <= 'z'", text)
+        self.assertIn("grid = (const char **)calloc(nrows * 4", text)
+
 class TestDhdutilUcode(unittest.TestCase):
     def test_ucode_download_source(self):
         # Check ucode_download.c exists and handles errors

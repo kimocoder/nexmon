@@ -665,7 +665,7 @@ nex_init_udp(unsigned int securitycookie, unsigned int txip)
 
 	sin_rx_ioctl.sin_family = AF_INET;
 	sin_rx_ioctl.sin_port = htons(5500);
-	sin_rx_ioctl.sin_addr.s_addr = IPADDR(255,255,255,255);
+	sin_rx_ioctl.sin_addr.s_addr = htonl(INADDR_ANY);
 
 	nexio->sock_tx = socket_cloexec(sin_tx.sin_family, SOCK_DGRAM, IPPROTO_UDP);
 	nexio->sock_rx_ioctl = socket_cloexec(sin_rx_ioctl.sin_family, SOCK_DGRAM, IPPROTO_UDP);
@@ -675,8 +675,9 @@ nex_init_udp(unsigned int securitycookie, unsigned int txip)
 		goto fail;
 	}
 
-	// Enable broadcasts for transmit socket
+	// Enable broadcasts for sockets
 	setsockopt(nexio->sock_tx, SOL_SOCKET, SO_BROADCAST, &broadcast_enable, sizeof(broadcast_enable));
+	setsockopt(nexio->sock_rx_ioctl, SOL_SOCKET, SO_BROADCAST, &broadcast_enable, sizeof(broadcast_enable));
 
 	// Allow rapid reuse and set 1 second timeout on ioctl receive socket
 	setsockopt(nexio->sock_rx_ioctl, SOL_SOCKET, SO_REUSEADDR, &reuse_enable, sizeof(reuse_enable));
