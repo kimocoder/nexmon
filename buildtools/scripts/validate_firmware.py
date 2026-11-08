@@ -28,7 +28,8 @@ import os
 import re
 import struct
 import sys
-from typing import Any, Dict, List, Optional
+from collections import defaultdict
+from typing import Any, Dict, List, Optional, Set, Tuple
 import ast
 import operator
 
@@ -150,9 +151,17 @@ class DefinitionParser:
 class FirmwareValidator:
     """Comprehensive validation engine for Nexmon firmware builds."""
 
-    def __init__(self, patch_dir: Optional[str] = None, fw_dir: Optional[str] = None, nexmon_root: Optional[str] = None, quiet: bool = False):
+    def __init__(
+        self,
+        patch_dir: Optional[str] = None,
+        fw_dir: Optional[str] = None,
+        nexmon_root: Optional[str] = None,
+        quiet: bool = False,
+        require: bool = False,
+    ):
         self.patch_dir = os.path.abspath(patch_dir or os.getcwd())
         self.quiet = quiet
+        self.require = require or os.environ.get("NEXMON_REQUIRE_BUILD") == "1"
         self.results: List[Dict[str, Any]] = []
         self.passed = 0
         self.failed = 0
@@ -521,6 +530,233 @@ class FirmwareValidator:
                         return st_value
         return None
 
+    @staticmethod
+    def parse_firmware_versions(
+        fw_version_path: str,
+    ) -> Tuple[Dict[str, int], Dict[str, int]]:
+        """Parse CHIP_VER_* and FW_VER_* defines from firmware_version.h."""
+        chip_defs: Dict[str, int] = {"CHIP_VER_ALL": 0}
+        fw_defs: Dict[str, int] = {"FW_VER_ALL": 0}
+        if not os.path.isfile(fw_version_path):
+            return chip_defs, fw_defs
+        with open(fw_version_path, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                m_chip = re.match(r"#define\s+(CHIP_VER_\w+)\s+(\d+)", line)
+                if m_chip:
+                    chip_defs[m_chip.group(1)] = int(m_chip.group(2))
+                m_fw = re.match(r"#define\s+(FW_VER_\w+)\s+(\d+)", line)
+                if m_fw:
+                    fw_defs[m_fw.group(1)] = int(m_fw.group(2))
+        return chip_defs, fw_defs
+
+    @staticmethod
+    def parse_wrapper_bindings(
+        wrapper_path: str,
+        chip_defs: Optional[Dict[str, int]] = None,
+        fw_defs: Optional[Dict[str, int]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Parse all AT(chip, fw, addr) annotations and function signatures in wrapper.c."""
+        chip_defs = chip_defs or {}
+        fw_defs = fw_defs or {}
+        bindings: List[Dict[str, Any]] = []
+        if not os.path.isfile(wrapper_path):
+            return bindings
+
+        at_pattern = re.compile(
+            r"^\s*AT\s*\(\s*([A-Za-z0-9_]+)\s*,\s*([A-Za-z0-9_]+)\s*,\s*(0x[0-9a-fA-F]+|\d+)\s*\)"
+        )
+        func_skip = {
+            "AT", "void", "int", "bool", "uint", "uint32", "uint16", "uint8",
+            "char", "unsigned", "short", "long", "float", "double", "struct",
+            "const", "static", "inline", "extern",
+        }
+
+        pending_ats: List[Tuple[str, str, int, int]] = []
+        with open(wrapper_path, "r", encoding="utf-8", errors="replace") as f:
+            for idx, line in enumerate(f, 1):
+                m = at_pattern.match(line)
+                if m:
+                    chip, fw, addr_str = m.group(1), m.group(2), m.group(3)
+                    addr = int(addr_str, 16) if addr_str.startswith(("0x", "0X")) else int(addr_str)
+                    pending_ats.append((chip, fw, addr, idx))
+                    continue
+                if pending_ats:
+                    stripped = line.strip()
+                    if not stripped or stripped.startswith(("//", "/*", "*")):
+                        continue
+                    m_func = re.search(r"([a-zA-Z_][a-zA-Z0-9_]*)\s*\(", line)
+                    if m_func and m_func.group(1) not in func_skip:
+                        func_name = m_func.group(1)
+                        for c, w, a, l in pending_ats:
+                            c_num = chip_defs.get(c, -1)
+                            w_num = fw_defs.get(w, -1)
+                            bindings.append({
+                                "func": func_name,
+                                "chip": c,
+                                "fw": w,
+                                "chip_num": c_num,
+                                "fw_num": w_num,
+                                "addr": a,
+                                "line": l,
+                            })
+                        pending_ats = []
+        return bindings
+
+    @classmethod
+    def check_wrapper_integrity(
+        cls,
+        wrapper_path: str,
+        fw_version_path: str,
+        target_chip: Optional[str] = None,
+        target_fw: Optional[str] = None,
+    ) -> List[str]:
+        """Validate wrapper bindings for address collisions and BCM43438/BCM43430a1 consistency.
+
+        Detects:
+          1. Exact macro collisions: two distinct functions bound to the same (chip, fw, addr).
+          2. Resolved numeric collisions: two distinct functions resolving to the same (chip_id, fw_id, addr)
+             across macro aliases (e.g. CHIP_VER_BCM43438 vs CHIP_VER_BCM43430a1).
+          3. BCM43438 vs BCM43430a1 consistency: conflicting addresses, dangerous fallback to FW_VER_ALL,
+             or missing parity on primary shared versions.
+          4. Target-specific collisions across resolved wrapper bindings.
+        """
+        chip_defs, fw_defs = cls.parse_firmware_versions(fw_version_path)
+        bindings = cls.parse_wrapper_bindings(wrapper_path, chip_defs, fw_defs)
+        errors: List[str] = []
+
+        if not bindings:
+            errors.append(f"No wrapper bindings parsed from {wrapper_path}")
+            return errors
+
+        # 1. Exact macro collisions: (chip, fw, addr) -> multiple distinct functions
+        macro_map: Dict[Tuple[str, str, int], Dict[str, Set[int]]] = defaultdict(lambda: defaultdict(set))
+        for b in bindings:
+            macro_map[(b["chip"], b["fw"], b["addr"])][b["func"]].add(b["line"])
+
+        for (c, w, addr), funcs in sorted(macro_map.items()):
+            if len(funcs) > 1:
+                detail = ", ".join(f"{f} (line {min(lines)})" for f, lines in sorted(funcs.items()))
+                errors.append(
+                    f"Wrapper address collision: distinct functions share ({c}, {w}, 0x{addr:X}): {detail}"
+                )
+
+        # 2. Resolved numeric collisions across aliases
+        resolved_map: Dict[Tuple[int, int, int], Dict[str, Set[Tuple[str, str, int]]]] = defaultdict(lambda: defaultdict(set))
+        for b in bindings:
+            if b["chip_num"] >= 0 and b["fw_num"] >= 0:
+                resolved_map[(b["chip_num"], b["fw_num"], b["addr"])][b["func"]].add((b["chip"], b["fw"], b["line"]))
+
+        for (c_num, w_num, addr), funcs in sorted(resolved_map.items()):
+            if len(funcs) > 1:
+                macro_pairs = {(c, w) for flist in funcs.values() for c, w, l in flist}
+                if len(macro_pairs) > 1:
+                    detail = ", ".join(f"{f} ({c}/{w})" for f, flist in sorted(funcs.items()) for c, w, l in flist)
+                    errors.append(
+                        f"Wrapper resolved address collision (chip_id={c_num}, fw_id={w_num}, 0x{addr:X}): {detail}"
+                    )
+
+        # 3. BCM43438 vs BCM43430a1 consistency check
+        b38_by_func: Dict[str, Dict[str, int]] = defaultdict(dict)
+        b30_by_func: Dict[str, Dict[str, int]] = defaultdict(dict)
+        for b in bindings:
+            if b["chip"] == "CHIP_VER_BCM43438":
+                b38_by_func[b["func"]][b["fw"]] = b["addr"]
+            elif b["chip"] == "CHIP_VER_BCM43430a1":
+                b30_by_func[b["func"]][b["fw"]] = b["addr"]
+
+        all_bcm_funcs = set(b38_by_func.keys()) | set(b30_by_func.keys())
+        for f in sorted(all_bcm_funcs):
+            f38 = b38_by_func.get(f, {})
+            f30 = b30_by_func.get(f, {})
+
+            # Shared versions: explicit address must match
+            shared_fws = set(f38.keys()) & set(f30.keys())
+            for fw in sorted(shared_fws):
+                if f38[fw] != f30[fw]:
+                    errors.append(
+                        f"BCM43438/BCM43430a1 inconsistency for '{f}' on {fw}: BCM43438=0x{f38[fw]:X} vs BCM43430a1=0x{f30[fw]:X}"
+                    )
+
+            # Fallback inconsistency: one defines explicit fw, the other falls back to differing FW_VER_ALL
+            for fw, addr in f38.items():
+                if fw != "FW_VER_ALL" and fw not in f30 and "FW_VER_ALL" in f30 and f30["FW_VER_ALL"] != addr:
+                    errors.append(
+                        f"BCM43438/BCM43430a1 fallback inconsistency for '{f}': BCM43438 defines 0x{addr:X} for {fw}, "
+                        f"but BCM43430a1 falls back to 0x{f30['FW_VER_ALL']:X} (FW_VER_ALL)"
+                    )
+            for fw, addr in f30.items():
+                if fw != "FW_VER_ALL" and fw not in f38 and "FW_VER_ALL" in f38 and f38["FW_VER_ALL"] != addr:
+                    errors.append(
+                        f"BCM43438/BCM43430a1 fallback inconsistency for '{f}': BCM43430a1 defines 0x{addr:X} for {fw}, "
+                        f"but BCM43438 falls back to 0x{f38['FW_VER_ALL']:X} (FW_VER_ALL)"
+                    )
+
+            # Parity check for primary shared firmware version
+            primary_shared = "FW_VER_7_45_41_26_r640327"
+            if primary_shared in f38 and primary_shared not in f30:
+                errors.append(
+                    f"BCM43438/BCM43430a1 parity mismatch: '{f}' defined for BCM43438 on {primary_shared} but missing on BCM43430a1"
+                )
+            elif primary_shared in f30 and primary_shared not in f38:
+                errors.append(
+                    f"BCM43438/BCM43430a1 parity mismatch: '{f}' defined for BCM43430a1 on {primary_shared} but missing on BCM43438"
+                )
+
+        # 4. Target-specific collision check (when target chip & fw are known)
+        if target_chip and target_fw:
+            t_cnum = chip_defs.get(target_chip)
+            t_fwnum = fw_defs.get(target_fw)
+            t_map: Dict[int, Set[str]] = defaultdict(set)
+            for b in bindings:
+                c_match = (
+                    b["chip"] == "CHIP_VER_ALL"
+                    or b["chip"] == target_chip
+                    or (t_cnum is not None and b["chip_num"] == t_cnum)
+                )
+                w_match = (
+                    b["fw"] == "FW_VER_ALL"
+                    or b["fw"] == target_fw
+                    or (t_fwnum is not None and b["fw_num"] == t_fwnum)
+                )
+                if c_match and w_match:
+                    t_map[b["addr"]].add(b["func"])
+
+            for addr, funcs in sorted(t_map.items()):
+                if len(funcs) > 1:
+                    errors.append(
+                        f"Target {target_chip}/{target_fw} wrapper collision at 0x{addr:X} across functions: {sorted(funcs)}"
+                    )
+
+        return errors
+
+    def validate_wrapper(self, wrapper_path: Optional[str] = None, fw_version_path: Optional[str] = None):
+        self.section("10. Wrapper Address Collisions & BCM43438/BCM43430a1 Consistency")
+        wrapper_path = wrapper_path or os.path.join(self.nexmon_root, "patches", "common", "wrapper.c")
+        fw_version_path = fw_version_path or os.path.join(self.nexmon_root, "patches", "include", "firmware_version.h")
+
+        if not os.path.isfile(wrapper_path):
+            self.log_warn(f"wrapper.c not found: {wrapper_path}")
+            return
+        if not os.path.isfile(fw_version_path):
+            self.log_warn(f"firmware_version.h not found: {fw_version_path}")
+            return
+
+        target_chip = self.definitions.get("NEXMON_CHIP")
+        target_fw = self.definitions.get("NEXMON_FW_VERSION")
+
+        errors = self.check_wrapper_integrity(
+            wrapper_path=wrapper_path,
+            fw_version_path=fw_version_path,
+            target_chip=target_chip,
+            target_fw=target_fw,
+        )
+
+        for err in errors:
+            self.log_fail(err)
+
+        if not errors:
+            self.log_pass("Wrapper function bindings are consistent and collision-free.")
+
     def validate_memory_map(self):
         self.section("5. Memory Map and Linker Region Validation")
         memory_ld_path = os.path.join(self.patch_dir, "gen", "memory.ld")
@@ -788,7 +1024,7 @@ class FirmwareValidator:
             self.log_warn(f"Capability word advertises unknown bits: 0x{value & ~known:x}")
 
     def compute_hashes(self):
-        self.section("9. Cryptographic Hashes")
+        self.section("11. Cryptographic Hashes")
         if self.patched_bin and os.path.isfile(self.patched_bin):
             with open(self.patched_bin, "rb") as f:
                 data = f.read()
@@ -804,6 +1040,37 @@ class FirmwareValidator:
             if self.fw_dir:
                 print(f"Target firmware base:     {self.fw_dir}")
 
+        if not self.fw_dir or not os.path.isdir(self.fw_dir):
+            self.log_fail(f"Invalid target: firmware directory not found for {self.patch_dir}")
+            return False
+
+        has_artifacts = bool(
+            self.patched_bin
+            and os.path.isfile(self.patched_bin)
+            and self.patch_elf
+            and os.path.isfile(self.patch_elf)
+        )
+        if not has_artifacts:
+            rel_bin = (
+                os.path.relpath(self.patched_bin, self.patch_dir)
+                if self.patched_bin
+                else self.ram_filename
+            )
+            if self.require:
+                self.log_fail(
+                    f"build artifacts not found ({rel_bin}, gen/patch.elf); FAILING build validation."
+                )
+                if not self.quiet:
+                    print(f"Build the firmware first (make -C {self.patch_dir}).")
+                return False
+            else:
+                if not self.quiet:
+                    print(
+                        f"build artifacts not found ({rel_bin}, gen/patch.elf); skipping build validation."
+                    )
+                    print(f"Build the firmware first (make -C {self.patch_dir}).")
+                return True
+
         self.validate_artifacts()
         self.validate_objects()
         self.validate_firmware_diff()
@@ -813,6 +1080,7 @@ class FirmwareValidator:
         self.validate_firmware_strings()
         self.validate_ucode()
         self.validate_capabilities()
+        self.validate_wrapper()
         self.compute_hashes()
 
         if not self.quiet:
@@ -834,16 +1102,51 @@ def main():
     parser.add_argument("--patch-dir", dest="opt_patch_dir", default=None, help="Explicit path to patch directory")
     parser.add_argument("--fw-dir", dest="fw_dir", default=None, help="Explicit path to target firmware directory")
     parser.add_argument("--nexmon-root", dest="nexmon_root", default=None, help="Nexmon repository root")
+    parser.add_argument("--require", action="store_true", help="Fail if build artifacts are missing (default: skip cleanly if unbuilt)")
+    parser.add_argument("--check-wrapper", action="store_true", help="Validate patches/common/wrapper.c bindings and exit")
     parser.add_argument("--quiet", "-q", action="store_true", help="Quiet output")
     parser.add_argument("--json", action="store_true", help="Emit JSON summary")
     args = parser.parse_args()
 
     patch_dir = args.opt_patch_dir or args.patch_dir or os.getcwd()
+
+    if args.check_wrapper:
+        nexmon_root = args.nexmon_root
+        if not nexmon_root:
+            cur = os.path.abspath(patch_dir)
+            for _ in range(6):
+                if os.path.isfile(os.path.join(cur, "setup_env.sh")) and os.path.isdir(os.path.join(cur, "firmwares")):
+                    nexmon_root = cur
+                    break
+                parent = os.path.dirname(cur)
+                if parent == cur:
+                    break
+                cur = parent
+        nexmon_root = nexmon_root or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        wrapper_path = os.path.join(nexmon_root, "patches", "common", "wrapper.c")
+        fw_version_path = os.path.join(nexmon_root, "patches", "include", "firmware_version.h")
+        errors = FirmwareValidator.check_wrapper_integrity(wrapper_path, fw_version_path)
+        if not args.quiet:
+            print(f"\n{'='*60}\n  WRAPPER INTEGRITY CHECK\n{'='*60}")
+            if not errors:
+                print("  \033[0;32m✅ PASS:\033[0m Wrapper function bindings are consistent and collision-free.")
+                print(f"\n{'='*60}\n  VALIDATION SUMMARY\n{'='*60}")
+                print("  \033[0;32mWRAPPER VALIDATION PASSED ✓\033[0m\n")
+            else:
+                for err in errors:
+                    print(f"  \033[0;31m❌ FAIL:\033[0m {err}")
+                print(f"\n{'='*60}\n  VALIDATION SUMMARY\n{'='*60}")
+                print("  \033[0;31mWRAPPER VALIDATION FAILED ❌\033[0m\n")
+        if args.json:
+            print(json.dumps({"success": len(errors) == 0, "errors": errors}, indent=2))
+        sys.exit(0 if len(errors) == 0 else 1)
+
     validator = FirmwareValidator(
         patch_dir=patch_dir,
         fw_dir=args.fw_dir,
         nexmon_root=args.nexmon_root,
         quiet=args.quiet or args.json,
+        require=args.require,
     )
     success = validator.run_all()
 

@@ -149,6 +149,116 @@ class TestFirmwareValidator(unittest.TestCase):
                 validator.results,
             )
 
+    def test_repo_wrapper_is_clean(self):
+        """Repository patches/common/wrapper.c must pass collision and consistency checks."""
+        wrapper_path = os.path.join(NEXMON_ROOT, "patches", "common", "wrapper.c")
+        fw_version_path = os.path.join(NEXMON_ROOT, "patches", "include", "firmware_version.h")
+        self.assertTrue(os.path.isfile(wrapper_path))
+        self.assertTrue(os.path.isfile(fw_version_path))
+
+        errors = FirmwareValidator.check_wrapper_integrity(wrapper_path, fw_version_path)
+        self.assertEqual(errors, [], f"Wrapper integrity errors found: {errors}")
+
+    def test_wrapper_exact_macro_collision_detected(self):
+        """Two distinct functions bound to the exact same (chip, fw, addr) must be caught."""
+        with tempfile.TemporaryDirectory(prefix="nexmon-test-wrapper-") as tmp:
+            fw_h = Path(tmp) / "firmware_version.h"
+            fw_h.write_text(
+                "#define CHIP_VER_BCM4361b0 104\n"
+                "#define FW_VER_13_38_55_1_sta 410\n"
+            )
+            wrap_c = Path(tmp) / "wrapper.c"
+            wrap_c.write_text(
+                "AT(CHIP_VER_BCM4361b0, FW_VER_13_38_55_1_sta, 0x177994)\n"
+                "void *pkt_buf_free_skb(void *osh, void *p, int send) { return 0; }\n\n"
+                "AT(CHIP_VER_BCM4361b0, FW_VER_13_38_55_1_sta, 0x177994)\n"
+                "int wl_sendup(void *wl, void *wlif, void *p) { return 0; }\n"
+            )
+            errors = FirmwareValidator.check_wrapper_integrity(str(wrap_c), str(fw_h))
+            self.assertTrue(any("Wrapper address collision" in e and "0x177994" in e for e in errors), errors)
+
+    def test_wrapper_resolved_macro_collision_detected(self):
+        """Different chip macro names with identical numeric values must be caught."""
+        with tempfile.TemporaryDirectory(prefix="nexmon-test-wrapper-") as tmp:
+            fw_h = Path(tmp) / "firmware_version.h"
+            fw_h.write_text(
+                "#define CHIP_VER_BCM43438 4\n"
+                "#define CHIP_VER_BCM43430a1 4\n"
+                "#define FW_VER_ALL 0\n"
+            )
+            wrap_c = Path(tmp) / "wrapper.c"
+            wrap_c.write_text(
+                "AT(CHIP_VER_BCM43438, FW_VER_ALL, 0x880B80)\n"
+                "void *malloc(unsigned int size) { return 0; }\n\n"
+                "AT(CHIP_VER_BCM43430a1, FW_VER_ALL, 0x880B80)\n"
+                "void *memcpy(void *dst, const void *src, unsigned int len) { return 0; }\n"
+            )
+            errors = FirmwareValidator.check_wrapper_integrity(str(wrap_c), str(fw_h))
+            self.assertTrue(any("resolved address collision" in e and "0x880B80" in e for e in errors), errors)
+
+    def test_wrapper_bcm43438_bcm43430a1_fallback_inconsistency_detected(self):
+        """Missing version override falling back to conflicting FW_VER_ALL must be caught."""
+        with tempfile.TemporaryDirectory(prefix="nexmon-test-wrapper-") as tmp:
+            fw_h = Path(tmp) / "firmware_version.h"
+            fw_h.write_text(
+                "#define CHIP_VER_BCM43438 4\n"
+                "#define CHIP_VER_BCM43430a1 4\n"
+                "#define FW_VER_ALL 0\n"
+                "#define FW_VER_7_45_98 43\n"
+            )
+            wrap_c = Path(tmp) / "wrapper.c"
+            wrap_c.write_text(
+                "AT(CHIP_VER_BCM43438, FW_VER_ALL, 0x819510)\n"
+                "AT(CHIP_VER_BCM43430a1, FW_VER_7_45_98, 0xA5E2)\n"
+                "AT(CHIP_VER_BCM43430a1, FW_VER_ALL, 0x819510)\n"
+                "void wl_monitor(void) { ; }\n"
+            )
+            errors = FirmwareValidator.check_wrapper_integrity(str(wrap_c), str(fw_h))
+            self.assertTrue(any("fallback inconsistency" in e and "wl_monitor" in e for e in errors), errors)
+
+    def test_wrapper_bcm43438_bcm43430a1_parity_mismatch_detected(self):
+        """Functions defined for 7_45_41_26 on one chip name but missing on the other must be caught."""
+        with tempfile.TemporaryDirectory(prefix="nexmon-test-wrapper-") as tmp:
+            fw_h = Path(tmp) / "firmware_version.h"
+            fw_h.write_text(
+                "#define CHIP_VER_BCM43438 4\n"
+                "#define CHIP_VER_BCM43430a1 4\n"
+                "#define FW_VER_7_45_41_26_r640327 40\n"
+            )
+            wrap_c = Path(tmp) / "wrapper.c"
+            wrap_c.write_text(
+                "AT(CHIP_VER_BCM43438, FW_VER_7_45_41_26_r640327, 0x2360)\n"
+                "void *memcpy(void *d, const void *s, unsigned int n) { return 0; }\n"
+            )
+            errors = FirmwareValidator.check_wrapper_integrity(str(wrap_c), str(fw_h))
+            self.assertTrue(any("parity mismatch" in e and "memcpy" in e for e in errors), errors)
+
+    def test_validate_firmware_require_behavior(self):
+        """--require fails on missing artifacts, but non-require cleanly skips (exit 0)."""
+        patch_dir = os.path.join(NEXMON_ROOT, "patches", "bcm43455c0", "7_45_265-28bca26-CY", "nexmon")
+        validator_skip = FirmwareValidator(patch_dir=patch_dir, quiet=True, require=False)
+        self.assertTrue(validator_skip.run_all())
+
+        validator_fail = FirmwareValidator(patch_dir=patch_dir, quiet=True, require=True)
+        self.assertFalse(validator_fail.run_all())
+        self.assertEqual(validator_fail.failed, 1)
+
+    def test_validate_build_forwarding_stub(self):
+        """validate_build.py forwarding stub behaves correctly with and without --require."""
+        import subprocess
+        stub_path = os.path.join(
+            NEXMON_ROOT, "patches", "bcm43455c0", "7_45_265-28bca26-CY", "nexmon", "validate_build.py"
+        )
+        self.assertTrue(os.path.isfile(stub_path))
+
+        res_skip = subprocess.run([sys.executable, stub_path], capture_output=True, text=True)
+        self.assertEqual(res_skip.returncode, 0)
+        self.assertIn("skipping build validation", res_skip.stdout)
+
+        res_req = subprocess.run([sys.executable, stub_path, "--require"], capture_output=True, text=True)
+        self.assertEqual(res_req.returncode, 1)
+        self.assertIn("FAILING build validation", res_req.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

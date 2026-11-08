@@ -54,7 +54,7 @@ jobs:
           make -C buildtools/flash_patch_extractor
           make -C firmwares/bcm43455c0/7_45_265-28bca26-CY
           make -j$(nproc) -C patches/bcm43455c0/7_45_265-28bca26-CY/nexmon firmware-only NEXMON_FREEZE_BUILD_NUMBER=1
-          python patches/bcm43455c0/7_45_265-28bca26-CY/nexmon/validate_build.py --require
+          python buildtools/scripts/validate_firmware.py patches/bcm43455c0/7_45_265-28bca26-CY/nexmon --require
 
   native:
     name: Native utilities + sanitizers on ubuntu-26.04

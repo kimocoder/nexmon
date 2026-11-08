@@ -37,6 +37,9 @@ jobs:
       - name: Verify IOCTL & Capability Constants Sync
         run: python buildtools/scripts/sync_constants.py --check
 
+      - name: Verify Wrapper Address Collisions & Consistency
+        run: python buildtools/scripts/validate_firmware.py --check-wrapper
+
       - name: Shellcheck
         run: |
           shellcheck -S error setup_env.sh monitor-mode.sh \
@@ -133,7 +136,7 @@ jobs:
           make -C firmwares/bcm43455c0/7_45_265-28bca26-CY
           make -j$(nproc) -C patches/bcm43455c0/7_45_265-28bca26-CY/nexmon firmware-only NEXMON_FREEZE_BUILD_NUMBER=1
           ccache -s || true
-          python patches/bcm43455c0/7_45_265-28bca26-CY/nexmon/validate_build.py --require
+          python buildtools/scripts/validate_firmware.py patches/bcm43455c0/7_45_265-28bca26-CY/nexmon --require
 
   legacy-firmware:
     name: Build ${{ matrix.dir }} patch

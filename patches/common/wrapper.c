@@ -272,6 +272,7 @@ mallocz(unsigned int size)
 RETURN_DUMMY
 
 AT(CHIP_VER_BCM43438, FW_VER_7_45_41_26_r640327, 0x880E20)
+AT(CHIP_VER_BCM43430a1, FW_VER_7_45_41_26_r640327, 0x880E20)
 void *
 calls_malloc_2nd_arg_zero(unsigned int len)
 RETURN_DUMMY
@@ -280,9 +281,9 @@ AT(CHIP_VER_BCM4339, FW_VER_ALL, 0x8C3DC)
 AT(CHIP_VER_BCM4358, FW_VER_ALL, 0x35F8)
 AT(CHIP_VER_BCM4356, FW_VER_ALL, 0x2E5C)
 AT(CHIP_VER_BCM43438, FW_VER_7_45_41_26_r640327, 0x2360)
-AT(CHIP_VER_BCM43430a1, FW_VER_ALL, 0x880B80)
+AT(CHIP_VER_BCM43430a1, FW_VER_7_45_41_26_r640327, 0x2360)
 AT(CHIP_VER_BCM43430a1, FW_VER_7_45_41_46, 0x2390)
-AT(CHIP_VER_BCM43430a1, FW_VER_7_45_98, 0x24ec)      // relocated from FW_VER_7_45_41_46 (0x2390) by byte-signature match (48B, unique hit); corroborated - the 7.45.98 RAM RX routine itself calls 0x24ec. Without this, 7_45_98 fell through to the FW_VER_ALL entry 0x880B80, which is NOT memcpy on this chip (a 5-instruction stub that loads one word and returns), so every memcpy silently did nothing
+AT(CHIP_VER_BCM43430a1, FW_VER_7_45_98, 0x24ec)      // relocated from FW_VER_7_45_41_46 (0x2390) by byte-signature match (48B, unique hit); corroborated - the 7.45.98 RAM RX routine itself calls 0x24ec
 AT(CHIP_VER_BCM4330, FW_VER_ALL, 0x809344)
 AT(CHIP_VER_BCM4335b0, FW_VER_ALL, 0x12D20)
 AT(CHIP_VER_BCM43596a0, FW_VER_ALL, 0x1d2c)
@@ -567,16 +568,14 @@ strncmp(char *str1, char *str2, unsigned int num)
 RETURN_DUMMY
 
 AT(CHIP_VER_BCM43451b1, FW_VER_ALL, 0x265C)
+AT(CHIP_VER_BCM43438, FW_VER_ALL, 0x803cd4)
 AT(CHIP_VER_BCM43430a1, FW_VER_ALL, 0x803cd4)
 AT(CHIP_VER_BCM43436b0, FW_VER_ALL, 0x804454)
 char *
 strncpy(char *dst, char *src, unsigned int num)
 RETURN_DUMMY
 
-AT(CHIP_VER_BCM4339, FW_VER_ALL, 0x166b4)
-void
-sub_166b4(void)
-VOID_DUMMY
+// sub_166b4 alias retired; see enable_interrupts_and_wait (0x166B4)
 
 AT(CHIP_VER_BCM4339, FW_VER_ALL, 0x16D8C)
 void
@@ -597,6 +596,7 @@ AT(CHIP_VER_BCM4339, FW_VER_ALL, 0x12978)
 AT(CHIP_VER_BCM4358, FW_VER_ALL, 0x39AC)
 AT(CHIP_VER_BCM4356, FW_VER_ALL, 0x3210)
 AT(CHIP_VER_BCM43451b1, FW_VER_ALL, 0x2748)
+AT(CHIP_VER_BCM43438, FW_VER_ALL, 0x803dc0)
 AT(CHIP_VER_BCM43430a1, FW_VER_ALL, 0x803dc0)
 AT(CHIP_VER_BCM43455c0, FW_VER_ALL, 0x3A94)
 AT(CHIP_VER_BCM43436b0, FW_VER_ALL, 0x804540)
@@ -837,11 +837,13 @@ wlc_custom_scan_complete(void *wlc, int status, void *cfg)
 VOID_DUMMY
 
 AT(CHIP_VER_BCM43438, FW_VER_7_45_41_26_r640327, 0x8517F4)
+AT(CHIP_VER_BCM43430a1, FW_VER_7_45_41_26_r640327, 0x8517F4)
 void *
 wlc_event_alloc(void *eq)
 RETURN_DUMMY
 
 AT(CHIP_VER_BCM43438, FW_VER_7_45_41_26_r640327, 0x829D4C)
+AT(CHIP_VER_BCM43430a1, FW_VER_7_45_41_26_r640327, 0x829D4C)
 void
 wlc_event_if(void *wlc, void *bsscfg, void *event, void *ether_addr)
 VOID_DUMMY
@@ -999,7 +1001,6 @@ AT(CHIP_VER_BCM43455c0, FW_VER_7_45_154, 0x1a2438)
 AT(CHIP_VER_BCM43455c0, FW_VER_7_45_189, 0x1A71BC)
 AT(CHIP_VER_BCM43455c0, FW_VER_7_45_234_4ca95bb_CY, 0x1A82E8)
 AT(CHIP_VER_BCM43455c0, FW_VER_7_45_265_28bca26_CY, 0x1A2F68)
-AT(CHIP_VER_BCM4361b0, FW_VER_13_38_55_1_sta, 0x177994)
 // Address taken from the 9_88_0_0 ROM dump. 9_88_4_65 does not call wl_sendup,
 // so keep this version-specific rather than claiming it for every 43436b0 fw.
 AT(CHIP_VER_BCM43436b0, FW_VER_9_88_0_0, 0x82f4f4)
@@ -1008,8 +1009,6 @@ wl_sendup(void *wl, void *wlif, void *p)
 RETURN_DUMMY
 
 AT(CHIP_VER_BCM43596a0, FW_VER_9_96_4_sta_c0, 0x1624AC)
-AT(CHIP_VER_BCM43455c0, FW_VER_7_45_154, 0x1a2438)
-AT(CHIP_VER_BCM43455c0, FW_VER_7_45_189, 0x1A71BC)
 // 7.45.98's RAM wl_monitor (0xa5e2) ends in "b.w 0xa46c" with (wl, 0, p_new, 1),
 // mirroring the ROM copy at 0x819510 which tail-calls 0x880f10 the same way.
 AT(CHIP_VER_BCM43430a1, FW_VER_7_45_98, 0xa46c)
@@ -1019,11 +1018,12 @@ VOID_DUMMY
 
 AT(CHIP_VER_BCM4358, FW_VER_ALL, 0x18628)
 AT(CHIP_VER_BCM4356, FW_VER_7_35_101_5_sta, 0x199112)
-AT(CHIP_VER_BCM43438, FW_VER_ALL, 0x819510)
 // 7.45.98 bypasses the ROM copy at 0x819510 (its stock flash-patch table
 // redirects the enclosing ROM RX routine into RAM at 0xd4e4); the live copy
 // this version actually calls is the RAM one at 0xa5e2.
+AT(CHIP_VER_BCM43438, FW_VER_7_45_98, 0xa5e2)
 AT(CHIP_VER_BCM43430a1, FW_VER_7_45_98, 0xa5e2)
+AT(CHIP_VER_BCM43438, FW_VER_ALL, 0x819510)
 AT(CHIP_VER_BCM43430a1, FW_VER_ALL, 0x819510)
 AT(CHIP_VER_BCM4339, FW_VER_ALL, 0x270F0)
 AT(CHIP_VER_BCM4330, FW_VER_ALL, 0x817ACC)
@@ -1176,10 +1176,7 @@ void *
 dump_stack_print_dbg_stuff_intr_handler(void)
 RETURN_DUMMY
 
-AT(CHIP_VER_BCM4339, FW_VER_6_37_32_RC23_34_40_r581243, 0x19B25C)
-int
-function_with_huge_jump_table(void *wlc, int a2, int cmd, int a4, int a5, unsigned int a6, int a7, int a8, int a9, int a10)
-RETURN_DUMMY
+// function_with_huge_jump_table placeholder retired; see wlc_iovar_change_handler (0x19B25C)
 
 AT(CHIP_VER_BCM4339, FW_VER_ALL, 0x08C3CC)
 AT(CHIP_VER_BCM4335b0, FW_VER_ALL, 0x12CEC)
@@ -1267,11 +1264,6 @@ VOID_DUMMY
 AT(CHIP_VER_BCM4339, FW_VER_6_37_32_RC23_34_40_r581243, 0x1ed584)
 void
 sub_1ed584(void)
-VOID_DUMMY
-
-AT(CHIP_VER_BCM4339, FW_VER_6_37_32_RC23_34_40_r581243, 0x1ecab0)
-void
-sub_1ecab0(void)
 VOID_DUMMY
 
 AT(CHIP_VER_BCM4339, FW_VER_6_37_32_RC23_34_40_r581243, 0x1ec6fc)
@@ -1554,6 +1546,7 @@ wlc_lcn40phy_write_table(void *pi, const void *pti)
 VOID_DUMMY
 
 AT(CHIP_VER_BCM43438, FW_VER_7_45_41_26_r640327, 0x82C684)
+AT(CHIP_VER_BCM43430a1, FW_VER_7_45_41_26_r640327, 0x82C684)
 void
 wlc_process_event(void *wlc, void *e)
 VOID_DUMMY
