@@ -57,6 +57,7 @@ check:
 	@printf "\033[0;32m  RUNNING UNIT AND INTEGRATION TESTS\033[0m\n"
 	$(Q)$(PYTHON) -m unittest discover -s tests -v
 	$(Q)$(PYTHON) buildtools/scripts/validate_firmware.py patches/bcm43455c0/7_45_265-28bca26-CY/nexmon
+	$(Q)$(PYTHON) buildtools/scripts/check_drivers.py --check
 
 clean:
 	@printf "\033[0;31m  CLEANING FIRMWARES, BUILDTOOLS AND UTILITIES\033[0m\n"

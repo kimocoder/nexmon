@@ -45,6 +45,9 @@ jobs:
           shellcheck -S error setup_env.sh monitor-mode.sh \
             buildtools/*.sh buildtools/scripts/*.sh
 
+      - name: Verify Kernel Driver Integrity & Syntax
+        run: python buildtools/scripts/check_drivers.py --check
+
   test-and-build:
     name: Native Utilities & Unit Tests
     runs-on: ubuntu-24.04
@@ -68,8 +71,8 @@ jobs:
         run: |
           sudo dpkg --add-architecture i386 || true
           sudo apt-get update
-          sudo apt-get install -y gcc g++-multilib libc6-i386 libgmp-dev libgmp-dev:i386 make gawk xxd libpcap-dev libnl-3-dev libnl-genl-3-dev libcap-dev ccache || \
-          sudo apt-get install -y gcc make gawk xxd libpcap-dev libnl-3-dev libnl-genl-3-dev libcap-dev ccache
+          sudo apt-get install -y gcc g++-multilib libc6-i386 libgmp-dev libgmp-dev:i386 make gawk xxd libpcap-dev libnl-3-dev libnl-genl-3-dev libcap-dev linux-headers-generic ccache || \
+          sudo apt-get install -y gcc g++-multilib libc6-i386 libgmp-dev make gawk xxd libpcap-dev libnl-3-dev libnl-genl-3-dev libcap-dev ccache
           mkdir -p "$HOME/.ccache"
           ccache --set-config=cache_dir="$HOME/.ccache" || true
 
@@ -86,7 +89,10 @@ jobs:
           make -C utilities/nexutil NATIVE_BUILD=1
           make -C buildtools/flash_patch_extractor
           make -C buildtools/ucode_extractor
-          make -C buildtools/gcc-nexmon-plugin || true
+          make -C buildtools/gcc-nexmon-plugin
+
+      - name: Compile-Check Kernel Drivers
+        run: python buildtools/scripts/check_drivers.py --compile || true
 
       - name: Run Unit Tests
         run: python -m unittest discover -s tests -v

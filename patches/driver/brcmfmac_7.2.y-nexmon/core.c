@@ -736,7 +736,7 @@ void brcmf_netif_mon_rx(struct brcmf_if *ifp, struct sk_buff *skb)
 		memset(radiotap, 0, sizeof(*radiotap));
 		radiotap->it_len = cpu_to_le16(sizeof(*radiotap));
 
-		/* NOTE: 4-byte HW status trimmed safely if present */
+		/* NOTE: 4-byte HW status trimmed safely if present; avoids
 		 * skb->len underflow if the frame is shorter than expected.
 		 */
 		if (skb->len >= 4)
