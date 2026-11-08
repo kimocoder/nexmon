@@ -26,4 +26,4 @@ complete.bin: brcmfmac43436-sdio.bin rom.bin
 
 clean:
 	@printf "\033[0;31m  CLEANING\033[0m\n"
-	$(Q)rm -f ucode.bin flashpatches.c templateram.bin
+	$(Q)rm -f ucode.bin templateram.bin
