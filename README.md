@@ -101,6 +101,7 @@ bcm4389c1<sup>5,8,9</sup> | 20_82_42_sta (r985250)   | Samsung Galaxy S22 Plus  
 bcm4389c1<sup>5,8,9</sup> | 20_101_36_2 (r994653)    | Google Pixel 7 and 7 Pro  | Rooted with [Magisk](https://github.com/topjohnwu/Magisk)           |     |     |     |  X  |  X  |    
 bcm4389c1<sup>5,8,9</sup> | 20_101_57 (r1035009)     | Google Pixel 7 and 7 Pro  | Rooted with [Magisk](https://github.com/topjohnwu/Magisk)           |     |     |     |  X  |  X  |    
 bcm4390b1<sup>5,8,9</sup> | 27_10_843_47 (r1084320)  | Google Pixel 9            | Rooted with [Magisk](https://github.com/topjohnwu/Magisk)           |     |     |     |  X  |  X  |    
+bcm4390b1<sup>5,8,9</sup> | 27_10_1121_57_26 (g9f20a98) | Google Pixel 9         | Rooted with [Magisk](https://github.com/topjohnwu/Magisk)           |     |     |     |  X  |  X  |    
 bcm4398d0<sup>5,8,9</sup> | 24_671_6_9 (r1031525)    | Google Pixel 8            | Rooted with [Magisk](https://github.com/topjohnwu/Magisk)           |     |     |     |  X  |  X  |    
 bcm4398d0<sup>5,8,9</sup> | 24_67101_26_10 (r1048778)| Google Pixel 8 and 8 Pro | Rooted with [Magisk](https://github.com/topjohnwu/Magisk)           |     |     |     |  X  |  X  |    
 bcm6715b0<sup>5</sup>     | 17_10_188_6401 (r808804) | Asus RT-AX86U Pro        | Stock firmware 3.0.0.4_388.23565 |     |     |     |  /  |  X  |    
