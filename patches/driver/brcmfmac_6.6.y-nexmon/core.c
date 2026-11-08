@@ -572,6 +572,7 @@ static netdev_tx_t brcmf_netdev_start_xmit(struct sk_buff *skb,
 			bphy_err(drvr, "%s: failed to expand headroom\n",
 				 brcmf_ifname(ifp));
 			atomic_inc(&drvr->bus_if->stats.pktcow_failed);
+			dev_kfree_skb(skb);
 			goto done;
 		}
 	}
@@ -666,10 +667,21 @@ void brcmf_netif_mon_rx(struct brcmf_if *ifp, struct sk_buff *skb)
 	if (brcmf_feat_is_enabled(ifp, BRCMF_FEAT_MONITOR_FMT_RADIOTAP)) {
 		/* Do nothing */
 	} else if (brcmf_feat_is_enabled(ifp, BRCMF_FEAT_MONITOR_FMT_HW_RX_HDR)) {
-		struct wlc_d11rxhdr *wlc_rxhdr = (struct wlc_d11rxhdr *)skb->data;
+		struct wlc_d11rxhdr *wlc_rxhdr;
 		struct ieee80211_radiotap_header *radiotap;
 		unsigned int offset;
 		u16 RxStatus1;
+
+		/* The firmware controls the length of this buffer, so validate
+		 * that the receive header is fully present before dereferencing
+		 * it.
+		 */
+		if (!pskb_may_pull(skb, sizeof(struct wlc_d11rxhdr))) {
+			brcmf_dbg(DATA, "mon rx: skb too short for rxhdr\n");
+			dev_kfree_skb_any(skb);
+			return;
+		}
+		wlc_rxhdr = (struct wlc_d11rxhdr *)skb->data;
 
 		RxStatus1 = le16_to_cpu(wlc_rxhdr->rxhdr.RxStatus1);
 
@@ -681,25 +693,43 @@ void brcmf_netif_mon_rx(struct brcmf_if *ifp, struct sk_buff *skb)
 			offset += 2;
 		offset += D11_PHY_HDR_LEN;
 
+		/* Ensure the whole header we are about to strip is present. */
+		if (!pskb_may_pull(skb, offset)) {
+			brcmf_dbg(DATA, "mon rx: skb too short for offset %u\n", offset);
+			dev_kfree_skb_any(skb);
+			return;
+		}
 		skb_pull(skb, offset);
 
 		/* NOTE: RX header used when available — fallback fills minimal radiotap */
+		if (skb_headroom(skb) < sizeof(*radiotap)) {
+			dev_kfree_skb_any(skb);
+			return;
+		}
 		radiotap = skb_push(skb, sizeof(*radiotap));
 		memset(radiotap, 0, sizeof(*radiotap));
 		radiotap->it_len = cpu_to_le16(sizeof(*radiotap));
 
-		/* NOTE: 4-byte HW status trimmed safely if present */
-		skb->len -= 4;
+		/* NOTE: 4-byte HW status trimmed safely if present; avoids
+		 * skb->len underflow if the frame is shorter than expected.
+		 */
+		if (skb->len >= 4)
+			skb_trim(skb, skb->len - 4);
 	} else {
 		struct ieee80211_radiotap_header *radiotap;
 
 		/* NOTE: RX status used when available; minimal radiotap otherwise */
+		if (skb_headroom(skb) < sizeof(*radiotap)) {
+			dev_kfree_skb_any(skb);
+			return;
+		}
 		radiotap = skb_push(skb, sizeof(*radiotap));
 		memset(radiotap, 0, sizeof(*radiotap));
 		radiotap->it_len = cpu_to_le16(sizeof(*radiotap));
 
 		/* NOTE: 4-byte HW status trimmed safely if present */
-		skb->len -= 4;
+		if (skb->len >= 4)
+			skb_trim(skb, skb->len - 4);
 	}
 
 	skb->dev = ifp->ndev;
@@ -714,6 +744,7 @@ static int brcmf_rx_hdrpull(struct brcmf_pub *drvr, struct sk_buff *skb,
 			    struct brcmf_if **ifp)
 {
 	int ret;
+	struct brcmf_if *mon_if;
 
 	/* process and remove protocol-specific header */
 	ret = brcmf_proto_hdrpull(drvr, true, skb, ifp);
@@ -723,6 +754,48 @@ static int brcmf_rx_hdrpull(struct brcmf_pub *drvr, struct sk_buff *skb,
 			(*ifp)->ndev->stats.rx_errors++;
 		brcmu_pkt_buf_free_skb(skb);
 		return -ENODATA;
+	}
+
+	/* If a monitor interface is active or frame carries radiotap header, route to mon_if */
+	mon_if = READ_ONCE(drvr->mon_if);
+	if (mon_if && mon_if->ndev && netif_running(mon_if->ndev)) {
+		struct ieee80211_radiotap_header *rth = (void *)skb->data;
+		if (skb->len >= sizeof(*rth) && rth->it_version == 0 &&
+		    le16_to_cpu(rth->it_len) >= sizeof(*rth) &&
+		    le16_to_cpu(rth->it_len) <= skb->len) {
+			*ifp = mon_if;
+		}
+	} else if (!mon_if) {
+		int i;
+		for (i = 0; i < BRCMF_MAX_IFS; i++) {
+			struct brcmf_if *tmp = READ_ONCE(drvr->iflist[i]);
+			if (tmp && tmp->ndev && netif_running(tmp->ndev) &&
+			    (tmp->ndev->type == ARPHRD_IEEE80211_RADIOTAP ||
+			     (tmp->vif && tmp->vif->wdev.iftype == NL80211_IFTYPE_MONITOR))) {
+				struct ieee80211_radiotap_header *rth = (void *)skb->data;
+				if (skb->len >= sizeof(*rth) && rth->it_version == 0 &&
+				    le16_to_cpu(rth->it_len) >= sizeof(*rth) &&
+				    le16_to_cpu(rth->it_len) <= skb->len) {
+					*ifp = tmp;
+					WRITE_ONCE(drvr->mon_if, tmp);
+					break;
+				}
+			}
+		}
+	}
+
+	if (unlikely(!(*ifp) || !(*ifp)->ndev)) {
+		brcmu_pkt_buf_free_skb(skb);
+		return -ENODATA;
+	}
+
+	if ((*ifp)->ndev->type == ARPHRD_IEEE80211_RADIOTAP) {
+		skb->dev = (*ifp)->ndev;
+		skb_reset_mac_header(skb);
+		skb->ip_summed = CHECKSUM_UNNECESSARY;
+		skb->pkt_type = PACKET_OTHERHOST;
+		skb->protocol = htons(ETH_P_802_2);
+		return 0;
 	}
 
 	skb->protocol = eth_type_trans(skb, (*ifp)->ndev);
@@ -775,15 +848,22 @@ void brcmf_txfinalize(struct brcmf_if *ifp, struct sk_buff *txp, bool success)
 	struct ethhdr *eh;
 	u16 type;
 
-	eh = (struct ethhdr *)(txp->data);
-	type = ntohs(eh->h_proto);
+	if (!ifp) {
+		brcmu_pkt_buf_free_skb(txp);
+		return;
+	}
 
-	if (type == ETH_P_PAE) {
-		atomic_dec(&ifp->pend_8021x_cnt);
-		/* Order the decrement before waitqueue_active() */
-		smp_mb__after_atomic();
-		if (waitqueue_active(&ifp->pend_8021x_wait))
-			wake_up(&ifp->pend_8021x_wait);
+	if (txp->len >= sizeof(*eh)) {
+		eh = (struct ethhdr *)(txp->data);
+		type = ntohs(eh->h_proto);
+
+		if (type == ETH_P_PAE) {
+			atomic_dec(&ifp->pend_8021x_cnt);
+			/* Order the decrement before waitqueue_active() */
+			smp_mb__after_atomic();
+			if (waitqueue_active(&ifp->pend_8021x_wait))
+				wake_up(&ifp->pend_8021x_wait);
+		}
 	}
 
 	if (!success)

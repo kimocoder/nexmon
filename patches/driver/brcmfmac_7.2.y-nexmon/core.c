@@ -599,6 +599,7 @@ static netdev_tx_t brcmf_netdev_start_xmit(struct sk_buff *skb,
 			bphy_err(drvr, "%s: failed to expand headroom\n",
 				 brcmf_ifname(ifp));
 			atomic_inc(&drvr->bus_if->stats.pktcow_failed);
+			dev_kfree_skb(skb);
 			goto done;
 		}
 	}
@@ -770,6 +771,7 @@ static int brcmf_rx_hdrpull(struct brcmf_pub *drvr, struct sk_buff *skb,
 			    struct brcmf_if **ifp)
 {
 	int ret;
+	struct brcmf_if *mon_if;
 
 	/* process and remove protocol-specific header */
 	ret = brcmf_proto_hdrpull(drvr, true, skb, ifp);
@@ -779,6 +781,48 @@ static int brcmf_rx_hdrpull(struct brcmf_pub *drvr, struct sk_buff *skb,
 			(*ifp)->ndev->stats.rx_errors++;
 		brcmu_pkt_buf_free_skb(skb);
 		return -ENODATA;
+	}
+
+	/* If a monitor interface is active or frame carries radiotap header, route to mon_if */
+	mon_if = READ_ONCE(drvr->mon_if);
+	if (mon_if && mon_if->ndev && netif_running(mon_if->ndev)) {
+		struct ieee80211_radiotap_header *rth = (void *)skb->data;
+		if (skb->len >= sizeof(*rth) && rth->it_version == 0 &&
+		    le16_to_cpu(rth->it_len) >= sizeof(*rth) &&
+		    le16_to_cpu(rth->it_len) <= skb->len) {
+			*ifp = mon_if;
+		}
+	} else if (!mon_if) {
+		int i;
+		for (i = 0; i < BRCMF_MAX_IFS; i++) {
+			struct brcmf_if *tmp = READ_ONCE(drvr->iflist[i]);
+			if (tmp && tmp->ndev && netif_running(tmp->ndev) &&
+			    (tmp->ndev->type == ARPHRD_IEEE80211_RADIOTAP ||
+			     (tmp->vif && tmp->vif->wdev.iftype == NL80211_IFTYPE_MONITOR))) {
+				struct ieee80211_radiotap_header *rth = (void *)skb->data;
+				if (skb->len >= sizeof(*rth) && rth->it_version == 0 &&
+				    le16_to_cpu(rth->it_len) >= sizeof(*rth) &&
+				    le16_to_cpu(rth->it_len) <= skb->len) {
+					*ifp = tmp;
+					WRITE_ONCE(drvr->mon_if, tmp);
+					break;
+				}
+			}
+		}
+	}
+
+	if (unlikely(!(*ifp) || !(*ifp)->ndev)) {
+		brcmu_pkt_buf_free_skb(skb);
+		return -ENODATA;
+	}
+
+	if ((*ifp)->ndev->type == ARPHRD_IEEE80211_RADIOTAP) {
+		skb->dev = (*ifp)->ndev;
+		skb_reset_mac_header(skb);
+		skb->ip_summed = CHECKSUM_UNNECESSARY;
+		skb->pkt_type = PACKET_OTHERHOST;
+		skb->protocol = htons(ETH_P_802_2);
+		return 0;
 	}
 
 	skb->protocol = eth_type_trans(skb, (*ifp)->ndev);
@@ -836,15 +880,17 @@ void brcmf_txfinalize(struct brcmf_if *ifp, struct sk_buff *txp, bool success)
 		return;
 	}
 
-	eh = (struct ethhdr *)(txp->data);
-	type = ntohs(eh->h_proto);
+	if (txp->len >= sizeof(*eh)) {
+		eh = (struct ethhdr *)(txp->data);
+		type = ntohs(eh->h_proto);
 
-	if (type == ETH_P_PAE) {
-		atomic_dec(&ifp->pend_8021x_cnt);
-		/* Order the decrement before waitqueue_active() */
-		smp_mb__after_atomic();
-		if (waitqueue_active(&ifp->pend_8021x_wait))
-			wake_up(&ifp->pend_8021x_wait);
+		if (type == ETH_P_PAE) {
+			atomic_dec(&ifp->pend_8021x_cnt);
+			/* Order the decrement before waitqueue_active() */
+			smp_mb__after_atomic();
+			if (waitqueue_active(&ifp->pend_8021x_wait))
+				wake_up(&ifp->pend_8021x_wait);
+		}
 	}
 
 	if (!success)
