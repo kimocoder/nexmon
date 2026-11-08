@@ -1,5 +1,4 @@
--include $(NEXMON_ROOT)/patches/common/nexmon_lazy.mk
-SHELL := /bin/bash
+NEXMON_ROOT ?= $(abspath ../../../..)
 include ../version.mk
 include $(FW_PATH)/definitions.mk
 
@@ -22,20 +21,11 @@ src/d11ucodex_btcxmu129_2_compressed.c
 COMMON_SRCS=$(wildcard $(NEXMON_ROOT)/patches/common/*.c)
 FW_SRCS=$(wildcard $(FW_PATH)/*.c)
 
-OBJS=$(addprefix obj/,$(notdir $(LOCAL_SRCS:.c=.o)) $(notdir $(COMMON_SRCS:.c=.o)) $(notdir $(FW_SRCS:.c=.o)))
-
 DATE := $(shell date -u +'%b %e %Y')
 TIME := $(shell date -u +'%T')
 
-CFLAGS= \
-	-fplugin=$(CCPLUGIN) \
-	-fplugin-arg-nexmon-objfile=$@ \
-	-fplugin-arg-nexmon-prefile=gen/nexmon.pre \
-	-fplugin-arg-nexmon-chipver=$(NEXMON_CHIP_NUM) \
-	-fplugin-arg-nexmon-fwver=$(NEXMON_FW_VERSION_NUM) \
+CFLAGS = \
 	-fno-strict-aliasing \
-	-DNEXMON_CHIP=$(NEXMON_CHIP) \
-	-DNEXMON_FW_VERSION=$(NEXMON_FW_VERSION) \
 	-DRECLAIM_END_PTR=$(RECLAIM_END_PTR) \
 	-DPATCHSTART=$(PATCHSTART) \
 	-DWLC_BMAC_PROCESS_UCODE_SR_BL_HOOK_ADDR=$(WLC_BMAC_PROCESS_UCODE_SR_BL_HOOK_ADDR) \
@@ -73,74 +63,22 @@ CFLAGS= \
 	-DDATE=\""$(DATE)"\" \
 	-DTIME_PTR=$(TIME_PTR) \
 	-DTIME=\""$(TIME)"\" \
-	-DGIT_VERSION=\"$(GIT_VERSION)\" \
-	-DBUILD_NUMBER=\"$$(cat BUILD_NUMBER)\" \
-	-Wall -Werror -O2 -nostdlib -nostartfiles -ffreestanding -mthumb -march=$(NEXMON_ARCH) \
-	-Wno-unused-function \
-	-ffunction-sections -fdata-sections \
-	-I$(NEXMON_ROOT)/patches/include \
-	-Iinclude \
-	-I$(FW_PATH)
+	-Wno-unused-function
 
-.PHONY: all init copy-firmware load-firmware clean-firmware clean
+NEXMON_PRE_DEDUP = 1
+USE_FLASHPATCHES = 0
+EXTRA_PHONY = copy-firmware load-firmware
+include $(NEXMON_ROOT)/patches/common/firmware_patch.mk
+
+gen/d11ucode_btcxmu129_1.bin gen/d11ucode_btcxmu129_1_compressed.bin src/d11ucode_btcxmu129_1_compressed.c gen/d11ucode_btcxmu129_2.bin gen/d11ucode_btcxmu129_2_compressed.bin src/d11ucode_btcxmu129_2_compressed.c gen/d11ucode_mu129_1.bin gen/d11ucode_mu129_1_compressed.bin src/d11ucode_mu129_1_compressed.c gen/d11ucode_mu129_2.bin gen/d11ucode_mu129_2_compressed.bin src/d11ucode_mu129_2_compressed.c gen/d11ucode_mu129.bin gen/d11ucode_mu129_compressed.bin src/d11ucode_mu129_compressed.c gen/d11ucodex_btcxmu129_1.bin gen/d11ucodex_btcxmu129_1_compressed.bin src/d11ucodex_btcxmu129_1_compressed.c gen/d11ucodex_btcxmu129_2.bin gen/d11ucodex_btcxmu129_2_compressed.bin src/d11ucodex_btcxmu129_2_compressed.c gen/d11ucodex_mu129_1.bin gen/d11ucodex_mu129_1_compressed.bin src/d11ucodex_mu129_1_compressed.c gen/d11ucodex_mu129_2.bin gen/d11ucodex_mu129_2_compressed.bin src/d11ucodex_mu129_2_compressed.c gen/d11ucodex_mu129.bin gen/d11ucodex_mu129_compressed.bin src/d11ucodex_mu129_compressed.c: | init
 
 all: $(RAM_FILE)
 
-init:
-	$(Q)if ! test -f BUILD_NUMBER; then echo 0 > BUILD_NUMBER; fi
-	$(Q)echo $$(($$(cat BUILD_NUMBER) + 1)) > BUILD_NUMBER
-	$(Q)touch src/version.c
-	$(Q)make -s -f $(NEXMON_ROOT)/patches/common/header.mk
-	$(Q)mkdir -p obj gen log
-
-obj/%.o: src/%.c
-	@printf "\033[0;31m  COMPILING\033[0m %s => %s (details: log/compiler.log)\n" $< $@
-	$(Q)cat gen/nexmon.pre 2>>log/error.log | gawk '{ if ($$3 != "$@") print; }' > tmp && mv tmp gen/nexmon.pre
-	$(Q)$(CC)gcc $(CFLAGS) -c $< -o $@ >>log/compiler.log
-
-obj/%.o: $(NEXMON_ROOT)/patches/common/%.c
-	@printf "\033[0;31m  COMPILING\033[0m %s => %s (details: log/compiler.log)\n" $< $@
-	$(Q)cat gen/nexmon.pre 2>>log/error.log | gawk '{ if ($$3 != "$@") print; }' > tmp && mv tmp gen/nexmon.pre
-	$(Q)$(CC)gcc $(CFLAGS) -c $< -o $@ >>log/compiler.log
-
-obj/%.o: $(FW_PATH)/%.c
-	@printf "\033[0;31m  COMPILING\033[0m %s => %s (details: log/compiler.log)\n" $< $@
-	$(Q)cat gen/nexmon.pre 2>>log/error.log | gawk '{ if ($$3 != "$@") print; }' > tmp && mv tmp gen/nexmon.pre
-	$(Q)$(CC)gcc $(CFLAGS) -c $< -o $@ >>log/compiler.log
-
-gen/nexmon2.pre: $(OBJS)
-	@printf "\033[0;31m  PREPARING\033[0m %s => %s\n" "gen/nexmon.pre" $@
-	$(Q)cat gen/nexmon.pre | awk '{ if ($$3 != "obj/wrapper.o") { print $$0; } }' > tmp
-	$(Q)cat gen/nexmon.pre | awk '{ if ($$3 == "obj/wrapper.o") { print $$0; } }' >> tmp
-	$(Q)cat tmp | awk '{ if ($$1 ~ /^0x/) { if ($$3 != "obj/wrapper.o") { if (!x[$$1]++) { print $$0; } } else { if (!x[$$1]) { print $$0; } } } else { print$$0; } }' > gen/nexmon2.pre
-
-gen/nexmon.ld: gen/nexmon2.pre $(OBJS)
-	@printf "\033[0;31m  GENERATING LINKER FILE\033[0m gen/nexmon.pre => %s\n" $@
-	$(Q)sort gen/nexmon2.pre | gawk -f $(NEXMON_ROOT)/buildtools/scripts/nexmon.ld.awk > $@
-
-gen/nexmon.mk: gen/nexmon2.pre $(OBJS) $(FW_PATH)/definitions.mk
-	@printf "\033[0;31m  GENERATING MAKE FILE\033[0m gen/nexmon.pre => %s\n" $@
-	$(Q)printf "$(RAM_FILE): gen/patch.elf FORCE\n" > $@
-	$(Q)sort gen/nexmon2.pre | \
-		gawk -v src_file=gen/patch.elf -f $(NEXMON_ROOT)/buildtools/scripts/nexmon.mk.1.awk | \
-		gawk -v ramstart=$(RAMSTART) -f $(NEXMON_ROOT)/buildtools/scripts/nexmon.mk.2.awk >> $@
-	$(Q)printf "\nFORCE:\n" >> $@
-	$(Q)gawk '!a[$$0]++' $@ > tmp && mv tmp $@
-
 gen/memory.ld: $(FW_PATH)/definitions.mk
 	@printf "\033[0;31m  GENERATING LINKER FILE\033[0m %s\n" $@
-	$(Q)printf "ram : ORIGIN = 0x%08x, LENGTH = 0x%08x\n" $(RAMSTART) $(RAMSIZE) >> $@
+	$(Q)printf "ram : ORIGIN = 0x%08x, LENGTH = 0x%08x\n" $(RAMSTART) $(RAMSIZE) > $@
 	$(Q)printf "ucode : ORIGIN = 0x%08x, LENGTH = 0x%08x\n" $(UCODEBT2START) $$(($(PATCHSTART) - $(UCODEBT2START))) >> $@
 	$(Q)printf "patch : ORIGIN = 0x%08x, LENGTH = 0x%08x\n" $(PATCHSTART) $(PATCHSIZE) >> $@
-
-gen/patch.elf: patch.ld gen/nexmon.ld gen/memory.ld $(OBJS)
-	@printf "\033[0;31m  LINKING OBJECTS\033[0m => %s (details: log/linker.log, log/linker.err)\n" $@
-	$(Q)$(CC)ld -T $< -o $@ --gc-sections --print-gc-sections -M >>log/linker.log 2>>log/linker.err
-
-$(RAM_FILE): init gen/patch.elf $(FW_PATH)/$(RAM_FILE) gen/nexmon.mk
-	$(Q)cp $(FW_PATH)/$(RAM_FILE) $@
-	@printf "\033[0;31m  APPLYING PATCHES\033[0m gen/nexmon.mk => %s (details: log/patches.log)\n" $@
-	$(Q)make -f gen/nexmon.mk >>log/patches.log 2>>log/patches.log
 
 ###################################################################
 # ucode compression related
@@ -320,6 +258,3 @@ endif
 clean-firmware:
 	@printf "\033[0;31m  CLEANING\033[0m\n"
 	$(Q)rm -fr $(RAM_FILE) obj gen log src/d11ucode_mu129_compressed.c src/d11ucodex_mu129_compressed.c src/d11ucode_mu129_1_compressed.c src/d11ucodex_mu129_1_compressed.c src/d11ucode_btcxmu129_1_compressed.c src/d11ucodex_btcxmu129_1_compressed.c src/d11ucode_mu129_2_compressed.c src/d11ucodex_mu129_2_compressed.c src/d11ucode_btcxmu129_2_compressed.c src/d11ucodex_btcxmu129_2_compressed.c
-
-clean: clean-firmware
-	$(Q)rm -fr BUILD_NUMBER

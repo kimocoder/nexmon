@@ -48,19 +48,22 @@ class RecursiveMakeTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
 
     def test_recursive_build_layers_use_make_variable(self):
+        patch_makefiles = sorted(
+            p for p in (ROOT / "patches").rglob("Makefile")
+            if "driver" not in p.parts
+        )
         makefiles = [
             ROOT / "firmwares" / "Makefile",
             ROOT / "utilities" / "Makefile",
             ROOT / "buildtools" / "Makefile",
-            ROOT
-            / "patches"
-            / "bcm43455c0"
-            / "7_45_265-28bca26-CY"
-            / "nexmon"
-            / "Makefile",
+            ROOT / "patches" / "common" / "firmware_patch.mk",
+            ROOT / "patches" / "common" / "header.mk",
+            *patch_makefiles,
             *sorted((ROOT / "firmwares").glob("*/Makefile")),
         ]
-        literal_recursive_make = re.compile(r"^\t.*(?<!\$\(MAKE\))\bmake\s+-C\b")
+        literal_recursive_make = re.compile(
+            r"^\t.*(?<!\$\(MAKE\))\bmake\s+(?:APP_ABI=\S+\s+)?-(?:C|f|s)\b"
+        )
         ignored_failure = re.compile(r"\bmake\s+-C\b.*\|\|\s*true")
 
         violations = []

@@ -5,6 +5,7 @@ No firmware is installed, kernel module built, or build statistics transmitted.
 
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -27,6 +28,10 @@ class FirmwareMakeTests(unittest.TestCase):
         self.build = self.root / "patch/target"
         self.build.mkdir(parents=True)
         shutil.copy2(MAKEFILE, self.build / "Makefile")
+        common_dir = self.root / "patches/common"
+        common_dir.mkdir(parents=True, exist_ok=True)
+        for common_mk in ("firmware_patch.mk", "nexmon_lazy.mk"):
+            shutil.copy2(ROOT / "patches/common" / common_mk, common_dir / common_mk)
         self.write("patch/version.mk", "FW_PATH=$(NEXMON_ROOT)/firmwares\n")
         self.write("firmwares/definitions.mk", """
             RAM_FILE=firmware.bin
@@ -180,6 +185,90 @@ class FirmwareMakeTests(unittest.TestCase):
         self.assertEqual((self.build / "BUILD_NUMBER").read_text().strip(), "2")
         self.assertGreater(obj.stat().st_mtime_ns, first)
         self.assertEqual(source.stat().st_mtime_ns, before)
+
+    def test_header_dependency_triggers_selective_recompile(self):
+        hdr = self.write("patch/target/include/shared.h", "#define VAL 1\n")
+        self.write("patch/target/src/alpha.c", '#include "shared.h"\n')
+        self.write("tool-gcc", f"#!{sys.executable}\n" + textwrap.dedent("""
+            from pathlib import Path
+            import sys
+
+            args = sys.argv[1:]
+            assert '-MMD' in args and '-MP' in args, 'missing -MMD -MP flags'
+            output = Path(args[args.index('-o') + 1])
+            source = Path(args[args.index('-c') + 1])
+            pre = Path(next(a.split('=', 1)[1] for a in args
+                            if a.startswith('-fplugin-arg-nexmon-prefile=')))
+            obj = next(a.split('=', 1)[1] for a in args
+                       if a.startswith('-fplugin-arg-nexmon-objfile='))
+            with pre.open('a') as f:
+                f.write(f'patch TARGETREGION {obj}\\n')
+            output.write_text(source.read_text())
+            deps = f'{obj}: {source}'
+            if source.name == 'alpha.c':
+                deps += ' include/shared.h\\ninclude/shared.h:\\n'
+            else:
+                deps += '\\n'
+            output.with_suffix('.d').write_text(deps)
+        """), executable=True)
+        self.make("gen/nexmon.mk")
+        alpha_mtime = (self.build / "obj/alpha.o").stat().st_mtime_ns
+        beta_mtime = (self.build / "obj/beta.o").stat().st_mtime_ns
+        hdr.write_text("#define VAL 2\n")
+        os.utime(hdr, ns=(alpha_mtime + 10_000_000, alpha_mtime + 10_000_000))
+        self.make("gen/nexmon.mk")
+        self.assertGreater((self.build / "obj/alpha.o").stat().st_mtime_ns, alpha_mtime)
+        self.assertEqual((self.build / "obj/beta.o").stat().st_mtime_ns, beta_mtime)
+
+    def test_nexmon_pre_dedup_prioritizes_patch_objects(self):
+        self.write("tool-gcc", f"#!{sys.executable}\n" + textwrap.dedent("""
+            from pathlib import Path
+            import sys
+
+            args = sys.argv[1:]
+            output = Path(args[args.index('-o') + 1])
+            source = Path(args[args.index('-c') + 1])
+            pre = Path(next(a.split('=', 1)[1] for a in args
+                            if a.startswith('-fplugin-arg-nexmon-prefile=')))
+            obj = next(a.split('=', 1)[1] for a in args
+                       if a.startswith('-fplugin-arg-nexmon-objfile='))
+            with pre.open('a') as f:
+                if obj == 'obj/alpha.o':
+                    f.write(f'0x1010 PATCH {obj} custom_fn\\n')
+                elif obj == 'obj/wrapper.o':
+                    f.write(f'0x1010 DUMMY {obj} orig_fn\\n')
+                    f.write(f'0x1020 DUMMY {obj} kept_fn\\n')
+                else:
+                    f.write(f'patch TARGETREGION {obj}\\n')
+            output.write_text(source.read_text())
+            output.with_suffix('.d').write_text(f'{obj}: {source}\\n')
+        """), executable=True)
+        self.make("NEXMON_PRE_DEDUP=1", "gen/nexmon2.pre", "gen/nexmon.ld")
+        self.assertFalse((self.build / "tmp").exists())
+        dedup_lines = (self.build / "gen/nexmon2.pre").read_text().splitlines()
+        self.assertIn("0x1010 PATCH obj/alpha.o custom_fn", dedup_lines)
+        self.assertNotIn("0x1010 DUMMY obj/wrapper.o orig_fn", dedup_lines)
+        self.assertIn("0x1020 DUMMY obj/wrapper.o kept_fn", dedup_lines)
+
+    def test_all_patch_makefiles_share_firmware_patch_template(self):
+        patch_makefiles = sorted(
+            p for p in (ROOT / "patches").rglob("Makefile")
+            if "driver" not in p.parts
+        )
+        self.assertGreaterEqual(len(patch_makefiles), 61)
+        shared_tmp_re = re.compile(r"^\t.*>\s*tmp\b", re.M)
+        env = dict(self.env, NEXMON_ROOT=str(ROOT), GIT_VERSION="test")
+        for mf in patch_makefiles:
+            text = mf.read_text()
+            self.assertIn("patches/common/firmware_patch.mk", text, str(mf))
+            self.assertIsNone(shared_tmp_re.search(text), f"shared tmp in {mf}")
+            res = subprocess.run(
+                ["make", "--no-print-directory", "-qp", "-rR"],
+                cwd=mf.parent, env=env, text=True, capture_output=True, timeout=10,
+            )
+            self.assertNotEqual(res.returncode, 2, f"{mf}: {res.stderr}")
+            self.assertIn(".DEFAULT_GOAL := all\n", res.stdout, str(mf))
+            self.assertIn(".DELETE_ON_ERROR:", res.stdout, str(mf))
 
 
 if __name__ == "__main__":

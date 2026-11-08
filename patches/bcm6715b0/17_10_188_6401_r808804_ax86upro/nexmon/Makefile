@@ -1,9 +1,4 @@
-ifndef NEXMON_SETUP_ENV
-$(error run 'source setup_env.sh' first in the repository\'s root directory)
-endif
-
--include $(NEXMON_ROOT)/patches/common/nexmon_lazy.mk
-SHELL := /bin/bash
+NEXMON_ROOT ?= $(abspath ../../../..)
 include ../version.mk
 include $(FW_PATH)/definitions.mk
 
@@ -11,20 +6,11 @@ LOCAL_SRCS=$(wildcard src/*.c) src/ucode0_compressed.c src/ucode1_compressed.c s
 COMMON_SRCS=$(NEXMON_ROOT)/patches/common/ucode_compression_code.c $(NEXMON_ROOT)/patches/common/objmem.c $(NEXMON_ROOT)/patches/common/wrapper.c
 FW_SRCS=$(wildcard $(FW_PATH)/*.c)
 
-OBJS=$(addprefix obj/,$(notdir $(LOCAL_SRCS:.c=.o)) $(notdir $(COMMON_SRCS:.c=.o)) $(notdir $(FW_SRCS:.c=.o)))
-
 DATE := $(shell date -u +'%b %e %Y')
 TIME := $(shell date -u +'%T')
 
-CFLAGS= \
-	-fplugin=$(CCPLUGIN) \
-	-fplugin-arg-nexmon-objfile=$@ \
-	-fplugin-arg-nexmon-prefile=gen/nexmon.pre \
-	-fplugin-arg-nexmon-chipver=$(NEXMON_CHIP_NUM) \
-	-fplugin-arg-nexmon-fwver=$(NEXMON_FW_VERSION_NUM) \
+CFLAGS = \
 	-fno-strict-aliasing \
-	-DNEXMON_CHIP=$(NEXMON_CHIP) \
-	-DNEXMON_FW_VERSION=$(NEXMON_FW_VERSION) \
 	-DWLC_BMAC_PROCESS_UCODE_SR_BL_HOOK_ADDR=$(WLC_BMAC_PROCESS_UCODE_SR_BL_HOOK_ADDR) \
 	-DWLC_UCODE_WRITE_BL_HOOK_0_ADDR=$(WLC_UCODE_WRITE_BL_HOOK_0_ADDR) \
 	-DWLC_UCODE_WRITE_BL_HOOK_1_ADDR=$(WLC_UCODE_WRITE_BL_HOOK_1_ADDR) \
@@ -47,50 +33,19 @@ CFLAGS= \
 	-DTIME_PTR=$(TIME_PTR) \
 	-DDATE=\""$(DATE)"\" \
 	-DTIME=\""$(TIME)"\" \
-	-DGIT_VERSION=\"$(GIT_VERSION)\" \
-	-DBUILD_NUMBER=\"$$(cat BUILD_NUMBER)\" \
-	-Wall -Werror -O2 -nostdlib -nostartfiles -ffreestanding -mthumb -march=$(NEXMON_ARCH) \
-	-Wno-unused-function \
-	-ffunction-sections -fdata-sections \
-	-I$(NEXMON_ROOT)/patches/include \
-	-Iinclude \
-	-I$(FW_PATH)
+	-Wno-unused-function
+
+NEXMON_FW_TARGET = $(FW_FILE)
+NEXMON_PRE_DEDUP = 1
+USE_FLASHPATCHES = 0
+NEXMON_CUSTOM_FW_RULES = 1
+include $(NEXMON_ROOT)/patches/common/firmware_patch.mk
+
+gen/nexmon_pageable.mk gen/ucode0.bin gen/ucode1.bin gen/ucode2.bin gen/ucode3.bin gen/ucode0_compressed.bin gen/ucode1_compressed.bin gen/ucode2_compressed.bin gen/ucode3_compressed.bin src/ucode0_compressed.c src/ucode1_compressed.c src/ucode2_compressed.c src/ucode3_compressed.c: | init
 
 all: $(FW_FILE)
 
-init: FORCE
-	$(Q)if ! test -f BUILD_NUMBER; then echo 0 > BUILD_NUMBER; fi
-	$(Q)echo $$(($$(cat BUILD_NUMBER) + 1)) > BUILD_NUMBER
-	$(Q)touch src/version.c
-	$(Q)make -s -f $(NEXMON_ROOT)/patches/common/header.mk
-	$(Q)mkdir -p obj gen log
-
-obj/%.o: src/%.c
-	@printf "\033[0;31m  COMPILING\033[0m %s => %s (details: log/compiler.log)\n" $< $@
-	$(Q)cat gen/nexmon.pre 2>>log/error.log | gawk '{ if ($$3 != "$@") print; }' > tmp && mv tmp gen/nexmon.pre
-	$(Q)$(CC)gcc $(CFLAGS) -c $< -o $@ >>log/compiler.log
-
-obj/%.o: $(NEXMON_ROOT)/patches/common/%.c
-	@printf "\033[0;31m  COMPILING\033[0m %s => %s (details: log/compiler.log)\n" $< $@
-	$(Q)cat gen/nexmon.pre 2>>log/error.log | gawk '{ if ($$3 != "$@") print; }' > tmp && mv tmp gen/nexmon.pre
-	$(Q)$(CC)gcc $(CFLAGS) -c $< -o $@ >>log/compiler.log
-
-obj/%.o: $(FW_PATH)/%.c
-	@printf "\033[0;31m  COMPILING\033[0m %s => %s (details: log/compiler.log)\n" $< $@
-	$(Q)cat gen/nexmon.pre 2>>log/error.log | gawk '{ if ($$3 != "$@") print; }' > tmp && mv tmp gen/nexmon.pre
-	$(Q)$(CC)gcc $(CFLAGS) -c $< -o $@ >>log/compiler.log
-
-gen/nexmon2.pre: $(OBJS)
-	@printf "\033[0;31m  PREPARING\033[0m %s => %s\n" "gen/nexmon.pre" $@
-	$(Q)cat gen/nexmon.pre | awk '{ if ($$3 != "obj/wrapper.o") { print $$0; } }' > tmp
-	$(Q)cat gen/nexmon.pre | awk '{ if ($$3 == "obj/wrapper.o") { print $$0; } }' >> tmp
-	$(Q)cat tmp | awk '{ if ($$1 ~ /^0x/) { if ($$3 != "obj/wrapper.o") { if (!x[$$1]++) { print $$0; } } else { if (!x[$$1]) { print $$0; } } } else { print $$0; } }' > gen/nexmon2.pre
-
-gen/nexmon.ld: gen/nexmon2.pre $(OBJS)
-	@printf "\033[0;31m  GENERATING LINKER FILE\033[0m gen/nexmon.pre => %s\n" $@
-	$(Q)sort gen/nexmon2.pre | gawk -f $(NEXMON_ROOT)/buildtools/scripts/nexmon.ld.awk > $@
-
-gen/nexmon.mk: gen/nexmon2.pre $(OBJS) $(FW_PATH)/definitions.mk
+gen/nexmon.mk: gen/nexmon2.pre gen/patch.elf $(FW_PATH)/definitions.mk
 	@printf "\033[0;31m  GENERATING MAKE FILE\033[0m gen/nexmon.pre => %s\n" $@
 	$(Q)printf "gen/$(DONGLE_FW_FILE): gen/patch.elf FORCE\n" > $@
 	$(Q)sort gen/nexmon2.pre | \
@@ -98,9 +53,9 @@ gen/nexmon.mk: gen/nexmon2.pre $(OBJS) $(FW_PATH)/definitions.mk
 		gawk -v src_file=gen/patch.elf -f $(NEXMON_ROOT)/buildtools/scripts/nexmon.mk.1.awk | \
 		gawk -v ramstart=$(DONGLE_RAMSTART) -f $(NEXMON_ROOT)/buildtools/scripts/nexmon.mk.2.awk >> $@
 	$(Q)printf "\nFORCE:\n" >> $@
-	$(Q)gawk '!a[$$0]++' $@ > tmp && mv tmp $@
+	$(Q)gawk '!a[$$0]++' $@ > $@.tmp && mv $@.tmp $@
 
-gen/nexmon_pageable.mk: gen/nexmon2.pre $(OBJS) $(FW_PATH)/definitions.mk
+gen/nexmon_pageable.mk: gen/nexmon2.pre gen/patch.elf $(FW_PATH)/definitions.mk
 	@printf "\033[0;31m  GENERATING MAKE FILE\033[0m gen/nexmon.pre => %s\n" $@
 	$(Q)printf "gen/$(HOST_FW_FILE): gen/patch.elf FORCE\n" > $@
 	$(Q)sort gen/nexmon2.pre | \
@@ -108,27 +63,23 @@ gen/nexmon_pageable.mk: gen/nexmon2.pre $(OBJS) $(FW_PATH)/definitions.mk
 		gawk -v src_file=gen/patch.elf -f $(NEXMON_ROOT)/buildtools/scripts/nexmon.mk.1.awk | \
 		gawk -v ramstart=$(HOST_RAMSTART) -f $(NEXMON_ROOT)/buildtools/scripts/nexmon.mk.2.awk >> $@
 	$(Q)printf "\nFORCE:\n" >> $@
-	$(Q)gawk '!a[$$0]++' $@ > tmp && mv tmp $@
+	$(Q)gawk '!a[$$0]++' $@ > $@.tmp && mv $@.tmp $@
 
 gen/memory.ld: $(FW_PATH)/definitions.mk
 	@printf "\033[0;31m  GENERATING LINKER FILE\033[0m %s\n" $@
-	$(Q)printf "ram : ORIGIN = 0x%08x, LENGTH = 0x%08x\n" $(DONGLE_RAMSTART) $(DONGLE_RAMSIZE) >> $@
+	$(Q)printf "ram : ORIGIN = 0x%08x, LENGTH = 0x%08x\n" $(DONGLE_RAMSTART) $(DONGLE_RAMSIZE) > $@
 	$(Q)printf "ucode : ORIGIN = 0x%08x, LENGTH = 0x%08x\n" $(UCODE0START) $$(($(PATCHSTART) - $(UCODE0START))) >> $@
 	$(Q)printf "patch : ORIGIN = 0x%08x, LENGTH = 0x%08x\n" $(PATCHSTART) $(PATCHSIZE) >> $@
 
-gen/patch.elf: patch.ld gen/nexmon.ld gen/memory.ld $(OBJS)
-	@printf "\033[0;31m  LINKING OBJECTS\033[0m => %s (details: log/linker.log, log/linker.err)\n" $@
-	$(Q)$(CC)ld -T $< -o $@ --gc-sections --print-gc-sections -M >>log/linker.log 2>>log/linker.err
-
-gen/$(DONGLE_FW_FILE): $(FW_PATH)/$(DONGLE_FW_FILE) gen/nexmon.mk
+gen/$(DONGLE_FW_FILE): $(FW_PATH)/$(DONGLE_FW_FILE) gen/nexmon.mk | init
 	$(Q)cp $(FW_PATH)/$(DONGLE_FW_FILE) $@
 	@printf "\033[0;31m  APPLYING PATCHES\033[0m gen/nexmon.mk => %s (details: log/patches.log)\n" $@
-	$(Q)make -f gen/nexmon.mk >>log/patches.log 2>>log/patches.log
+	$(Q)$(MAKE) -f gen/nexmon.mk >>log/patches.log 2>>log/patches.log
 
-gen/$(HOST_FW_FILE): $(FW_PATH)/$(HOST_FW_FILE) gen/nexmon_pageable.mk
+gen/$(HOST_FW_FILE): $(FW_PATH)/$(HOST_FW_FILE) gen/nexmon_pageable.mk | init
 	$(Q)cp $(FW_PATH)/$(HOST_FW_FILE) $@
 	@printf "\033[0;31m  APPLYING PATCHES\033[0m gen/nexmon_pageable.mk => %s (details: log/patches_pageable.log)\n" $@
-	$(Q)make -f gen/nexmon_pageable.mk >>log/patches_pageable.log 2>>log/patches_pageable.log
+	$(Q)$(MAKE) -f gen/nexmon_pageable.mk >>log/patches_pageable.log 2>>log/patches_pageable.log
 
 $(FW_FILE): init gen/patch.elf gen/$(DONGLE_FW_FILE) gen/$(HOST_FW_FILE) $(FW_PATH)/$(FW_FILE)
 	$(Q)cp $(FW_PATH)/$(FW_FILE) $@
@@ -197,8 +148,3 @@ src/ucode3_compressed.c: gen/ucode3_compressed.bin
 clean-firmware: FORCE
 	@printf "\033[0;31m  CLEANING\033[0m\n"
 	$(Q)rm -fr $(FW_FILE) obj gen log src/ucode0_compressed.c src/ucode1_compressed.c src/ucode2_compressed.c src/ucode3_compressed.c
-
-clean: clean-firmware
-	$(Q)rm -fr BUILD_NUMBER
-
-FORCE:

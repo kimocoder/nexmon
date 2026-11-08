@@ -543,10 +543,14 @@ class TestTier3DriversAndFirmware(unittest.TestCase):
         self.assertEqual(recover_tsf64(drvr, 0x00000010), (2 << 32) | 0x00000010)
         self.assertEqual(drvr.nexmon_tsf_high, 2)
 
-        # Check typo in 43455c0 nexmon Makefile: gen/nexmon.mk should not log to flashpatches.log
+        # Check typo in 43455c0 nexmon Makefile / shared firmware_patch.mk: gen/nexmon.mk should not log to flashpatches.log
         mf = ROOT / "patches/bcm43455c0/7_45_265-28bca26-CY/nexmon/Makefile"
+        fw_patch_mk = ROOT / "patches/common/firmware_patch.mk"
         self.assertTrue(mf.is_file())
-        content = mf.read_text()
+        self.assertTrue(fw_patch_mk.is_file())
+        mf_content = mf.read_text()
+        self.assertIn("patches/common/firmware_patch.mk", mf_content)
+        content = mf_content + "\n" + fw_patch_mk.read_text()
         self.assertNotIn("-f gen/nexmon.mk >>log/patches.log 2>>log/flashpatches.log", content)
         self.assertIn("-f gen/nexmon.mk >>log/patches.log 2>>log/patches.log", content)
 
