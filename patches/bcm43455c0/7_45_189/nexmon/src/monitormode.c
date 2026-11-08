@@ -71,14 +71,20 @@ channel2freq(struct wl_info *wl, unsigned int channel)
 
 static void
 wl_monitor_radiotap(struct wl_info *wl, struct wl_rxsts *sts, struct sk_buff *p) {
-    if (!p || p->len <= PLCP_HDR_LEN)
+    if (!p)
         return;
+
+    if (p->len <= PLCP_HDR_LEN) {
+        pkt_buf_free_skb(wl->wlc->osh, p, 0);
+        return;
+    }
 
     void *head = (void *) (((uint32_t) p->data & 0xFFE00000) + p->head_off);
 
     if ((p->data + PLCP_HDR_LEN) - head < sizeof(struct nexmon_radiotap_header))
     {
         printf("%s: no space for header\n", __FUNCTION__);
+        pkt_buf_free_skb(wl->wlc->osh, p, 0);
         return;
     }
 
@@ -136,6 +142,8 @@ wl_monitor_hook(struct wl_info *wl, struct wl_rxsts *sts, struct sk_buff *p) {
     if (monitor & MONITOR_DROP_FRM) {
         if (monitor & MONITOR_LOG_ONLY)
             printf("frame received (dropped)\n");
+        if (p)
+            pkt_buf_free_skb(wl->wlc->osh, p, 0);
         return;
     }
 
@@ -145,6 +153,8 @@ wl_monitor_hook(struct wl_info *wl, struct wl_rxsts *sts, struct sk_buff *p) {
         if (p->data - head < sizeof(struct wl_rxsts))
         {
             printf("%s: no space for header\n", __FUNCTION__);
+            if (p)
+                pkt_buf_free_skb(wl->wlc->osh, p, 0);
             return;
         }
 
@@ -155,15 +165,23 @@ wl_monitor_hook(struct wl_info *wl, struct wl_rxsts *sts, struct sk_buff *p) {
     } else if (monitor & MONITOR_RADIOTAP) {
         wl_monitor_radiotap(wl, sts, p);
     } else if (monitor & MONITOR_IEEE80211) {
-        if (!p || p->len <= PLCP_HDR_LEN)
+        if (!p)
             return;
+        if (p->len <= PLCP_HDR_LEN) {
+            pkt_buf_free_skb(wl->wlc->osh, p, 0);
+            return;
+        }
         skb_pull(p, PLCP_HDR_LEN);
         p->flags |= 0x80u;
         wl_sendup_multiif(wl, p);
     } else if (monitor & MONITOR_LOG_ONLY) {
         printf("frame received\n");
+        if (p)
+            pkt_buf_free_skb(wl->wlc->osh, p, 0);
     } else if (monitor & MONITOR_IPV4_UDP) {
         printf("MONITOR over udp is not supported!\n");
+        if (p)
+            pkt_buf_free_skb(wl->wlc->osh, p, 0);
     }
 }
 

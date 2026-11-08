@@ -13,6 +13,7 @@ CFLAGS = \
 
 NEXMON_FW_TARGET = fw_bcmdhd.bin
 NEXMON_PRE_DEDUP = 1
+USE_FLASHPATCHES = 0
 EXTRA_PHONY = install-firmware backup-firmware install-backup
 include $(NEXMON_ROOT)/patches/common/firmware_patch.mk
 

@@ -47,6 +47,7 @@ CFLAGS = \
 	-Wno-unused-function
 
 NEXMON_PRE_DEDUP = 1
+USE_FLASHPATCHES = 0
 FLASHPATCHES_AWK = flashpatches.bcm4383.mk.awk
 EXTRA_PHONY = backup-firmware dump-rom install-firmware
 include $(NEXMON_ROOT)/patches/common/firmware_patch.mk

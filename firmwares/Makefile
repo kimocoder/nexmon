@@ -8,6 +8,6 @@ $(SUBDIRS): FORCE
 
 clean: FORCE
 	@printf "\033[0;31m  CLEANING CHIP VERSIONS\033[0m\n"
-	$(Q)for dir in $(SUBDIRS); do [ -f $$dir/Makefile ] && $(MAKE) -C $$dir clean || exit 1; done
+	$(Q)for dir in $(SUBDIRS); do if [ -f $$dir/Makefile ]; then $(MAKE) -C $$dir clean || exit 1; fi; done
 
 FORCE:

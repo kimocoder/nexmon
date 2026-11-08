@@ -170,7 +170,7 @@ path_to_path_to_indirect_call_of_phy_ac_rssi_compute_hook(void *rssi_related, st
         memset(myrtap, 0, sizeof(struct myradiotaphdr));
 
         myrtap->rtap.it_version = 0;
-        myrtap->rtap.it_pad = len;
+        myrtap->rtap.it_pad = 0;
         myrtap->rtap.it_len = sizeof(struct myradiotaphdr) + additional_padding;
 
         myrtap->rtap.it_present = 
