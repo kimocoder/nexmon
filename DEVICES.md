@@ -108,9 +108,22 @@
 - Apple MacBook Air (M1 / M2)
 - Apple MacBook Pro (M1 / M2)
 
+## BCM4383
+Wi-Fi 7 (802.11be) 2x2 + BT 5.4
+
+- Google Pixel 10 (BCM4383A3)
+
+## BCM4389
+Wi-Fi 6E (802.11ax) 2x2 + BT 5.2
+
+- Google Pixel 7 / Pixel 7 Pro (BCM4389C1)
+- Samsung Galaxy S21 Ultra 5G (BCM4389C1)
+- Samsung Galaxy S22 Plus (BCM4389C1)
+
 ## BCM4390 / BCM4398
 Wi-Fi 7 (802.11be) 2x2 + BT 5.4
 
+- Google Pixel 8 / Pixel 8 Pro (BCM4398D0)
 - Google Pixel 9 / Pixel 9 Pro (BCM4390B1)
 
 ```bash

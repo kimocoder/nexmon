@@ -891,10 +891,20 @@ class TestTier3BuildAndEnvironment(unittest.TestCase):
         sec = (ROOT / "SECURITY.md").read_text(errors="replace")
         self.assertIn("brcmfmac", sec)
         self.assertIn("rawproxy", sec)
+        self.assertIn(".github/workflows/check-updates.yml", sec)
 
         dev = (ROOT / "DEVICES.md").read_text(errors="replace")
         self.assertIn("Raspberry Pi 4 Model B", dev)
         self.assertIn("Raspberry Pi 3 Model B", dev)
+        self.assertIn("BCM4398D0", dev)
+        self.assertIn("BCM4383A3", dev)
+
+        readme = (ROOT / "README.md").read_text(errors="replace")
+        self.assertIn("7.3 and 7.4", readme)
+        self.assertIn("bcm43439a0<sup>7</sup>    | 7_95_49 (2271bb6 CY)     | Raspberry Pi Pico W       | Pico SDK                     |  X  |  X  |  X  |  X  |  X  |", readme)
+
+        gi = (ROOT / ".gitignore").read_text(errors="replace")
+        self.assertIn("arm-gnu-toolchain-15.3.rel1-aarch64-arm-none-eabi", gi)
 
 
 if __name__ == "__main__":

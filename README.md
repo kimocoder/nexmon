@@ -67,7 +67,7 @@ bcm4335b0                 | 6.30.171.1_sta           | Samsung Galaxy S4        
 bcm4339                   | 6_37_34_43               | Nexus 5                   | Android 6 Stock              |  X  |  X  |  X  |  X  |  X  |  O 
 bcm43430a1<sup>1</sup>    | 7_45_41_26               | Raspberry Pi 3 and Zero W | Raspbian 8                   |  X  |  X  |  X  |  X  |  X  |  O 
 bcm43430a1<sup>1</sup>    | 7_45_41_46               | Raspberry Pi 3 and Zero W | Raspbian Stretch             |  X  |  X  |  X  |  X  |  X  |  O 
-bcm43439a0<sup>7</sup>    | 7_95_49 (2271bb6 CY)     | Raspberry Pi Pico W       | Pico SDK                     |  X  |  X  |     |  X  |  X  |    
+bcm43439a0<sup>7</sup>    | 7_95_49 (2271bb6 CY)     | Raspberry Pi Pico W       | Pico SDK                     |  X  |  X  |  X  |  X  |  X  |    
 bcm43451b1                | 7_63_43_0                | iPhone 6                  | iOS 10.1.1 (14B100)          |     |     |     |  X  |  X  |    
 bcm43455                  | 7_45_77_0_hw             | Huawei P9                 | Android 7 Stock              |  X  |  X  |  X  |  X  |  X  |    
 bcm43455                  | 7_120_5_1_sta_C0         | Galaxy J7 2017            | ?                            |     |     |     |  X  |  X  |    
@@ -169,7 +169,7 @@ To be able to communicate with the firmware without root priviledges, we created
 * Start a UDP connection for example to activate monitor mode: `nexutil -X<cookie> -m1`
 
 ## Build patches for bcm43430a1 on the RPI3/Zero W, bcm43455c0 on the RPI3+/RPI4/RPI5, or bcm43436b0 on the RPI Zero 2W using Raspbian/Raspberry Pi OS (recommended)
-**Note:** We currently support Kernel Version 4.4 (deprecated), 4.9, 4.14, 4.19, 5.4, 5.10, 5.15, 6.1, 6.2, 6.6, 6.18, 7.2 and 7.3. The driver directory is selected automatically from `uname -r`, so a kernel whose `major.minor` has no matching `patches/driver/brcmfmac_<ver>.y-nexmon` directory builds the firmware but silently skips the driver. Raspbian contains firmware version 7.45.154 for the bcm43455c0. We also support firmware releases 7.45.189, 7.45.206, 7.45.234, and 7.45.265 (28bca26 CY) from Cypress / Raspberry Pi OS. Please, try which works best for you.
+**Note:** We currently support Kernel Version 4.4 (deprecated), 4.9, 4.14, 4.19, 5.4, 5.10, 5.15, 6.1, 6.2, 6.6, 6.18, 7.2, 7.3 and 7.4. The driver directory is selected automatically from `uname -r`, so a kernel whose `major.minor` has no matching `patches/driver/brcmfmac_<ver>.y-nexmon` directory builds the firmware but silently skips the driver. Raspbian contains firmware version 7.45.154 for the bcm43455c0. We also support firmware releases 7.45.189, 7.45.206, 7.45.234, and 7.45.265 (28bca26 CY) from Cypress / Raspberry Pi OS. Please, try which works best for you.
 * Make sure the following commands are executed as root: `sudo su`
 * Upgrade your Raspbian installation: `apt-get update && apt-get upgrade`
 * Install the kernel headers to build the driver and some dependencies: `sudo apt install raspberrypi-kernel-headers git libgmp3-dev gawk qpdf bison flex make autoconf libtool texinfo`

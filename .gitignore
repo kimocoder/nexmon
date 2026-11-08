@@ -14,10 +14,10 @@ __pycache__/
 *.pyc
 
 # --- downloaded host toolchains -------------------------------------------
-# Unmodified upstream release tarballs (~1.1 GB for the Arm GNU toolchain).
-# Nothing in the build graph references them: setup_env.sh selects
-# buildtools/gcc-arm-none-eabi-5_4-2016q2-<host> and expects the armhf
-# compat runtime libs, which are rebuilt per buildtools/MATH_LIBRARIES.md.
+# Unmodified upstream release tarballs and runtime libs (~1.1 GB).
+# setup_env.sh supports buildtools/arm-gnu-toolchain-15.3.rel1-aarch64-arm-none-eabi
+# on aarch64 hosts (or falls back to legacy GCC 5.4 with buildtools/armhf-compat-libs
+# rebuilt per buildtools/MATH_LIBRARIES.md).
 /buildtools/arm-gnu-toolchain-*/
 /buildtools/armhf-compat-libs/
 

@@ -34,7 +34,7 @@ We acknowledge receipt within 3 business days and aim to provide an initial asse
 - CI runs `ruff` with `extend-select = ["S","B9"]` (bandit), `shellcheck -S error`, and native AddressSanitizer/UndefinedBehaviorSanitizer test suites; see `pyproject.toml`.
 
 ## Checking Vendored Dependencies
-`buildtools/scripts/check_updates.py` tracks `utilities/*` and `buildtools/*` against upstream. CI runs it weekly (see `.github/workflows/ci.yml` `check_updates` job). To check locally:
+`buildtools/scripts/check_updates.py` tracks `utilities/*` and `buildtools/*` against upstream. CI runs it weekly (see `.github/workflows/check-updates.yml` `check-updates` job). To check locally:
 
 ```sh
 python3 buildtools/scripts/check_updates.py --category all
