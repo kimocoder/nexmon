@@ -23,12 +23,12 @@ public class FirmwareUtil {
 
     public static boolean isBroadcomChip() {
         Shell.SU.run("ifconfig wlan0 up");
-        return Nexutil.getInstance().getIntIoctl(0) == 0x14e46c77;
-	}
+        return Nexutil.getInstance().getIntIoctl(Nexutil.WLC_GET_MAGIC) == 0x14e46c77;
+    }
 
     public static String getCapabilities() {
         Shell.SU.run("ifconfig wlan0 up");
-        String capabilities = Nexutil.getInstance().getIoctl(400);
+        String capabilities = Nexutil.getInstance().getIoctl(Nexutil.NEX_GET_CAPABILITIES);
         return capabilities;
     }
 }
