@@ -135,14 +135,14 @@ qca9500<sup>4</sup>       | 4-1-0_55                 | TP-Link Talon AD7200     
 
 # Steps to create your own firmware patches
 
-## Build patches for bcm4330, bcm4339 and bcm4358 using a x86 computer running Linux (e.g. Ubuntu 16.04)
-* Install some dependencies: `sudo apt-get install git gawk qpdf adb flex bison`
-* **Only necessary for x86_64 systems**, install i386 libs: 
+## Build patches for bcm4330, bcm4339 and bcm4358 using an x86 computer running Linux (e.g. Ubuntu 24.04 / 22.04 / Debian 12)
+* Install build dependencies: `sudo apt-get install git gawk qpdf adb flex bison make gcc g++`
+* **Only necessary for x86_64 systems**, install 32-bit multiarch libraries for the bundled toolchain: 
 
-  ```
+  ```bash
   sudo dpkg --add-architecture i386
   sudo apt-get update
-  sudo apt-get install libc6:i386 libncurses5:i386 libstdc++6:i386
+  sudo apt-get install libc6:i386 libstdc++6:i386 libgmp-dev:i386
   ```
 * Clone our repository: `git clone https://github.com/seemoo-lab/nexmon.git`
 * In the root directory of the repository: `cd nexmon`
@@ -171,8 +171,8 @@ To be able to communicate with the firmware without root priviledges, we created
 ## Build patches for bcm43430a1 on the RPI3/Zero W, bcm43455c0 on the RPI3+/RPI4/RPI5, or bcm43436b0 on the RPI Zero 2W using Raspbian/Raspberry Pi OS (recommended)
 **Note:** We currently support Kernel Version 4.4 (deprecated), 4.9, 4.14, 4.19, 5.4, 5.10, 5.15, 6.1, 6.2, 6.6, 6.18, 7.2, 7.3 and 7.4. The driver directory is selected automatically from `uname -r`, so a kernel whose `major.minor` has no matching `patches/driver/brcmfmac_<ver>.y-nexmon` directory builds the firmware but silently skips the driver. Raspbian contains firmware version 7.45.154 for the bcm43455c0. We also support firmware releases 7.45.189, 7.45.206, 7.45.234, and 7.45.265 (28bca26 CY) from Cypress / Raspberry Pi OS. Please, try which works best for you.
 * Make sure the following commands are executed as root: `sudo su`
-* Upgrade your Raspbian installation: `apt-get update && apt-get upgrade`
-* Install the kernel headers to build the driver and some dependencies: `sudo apt install raspberrypi-kernel-headers git libgmp3-dev gawk qpdf bison flex make autoconf libtool texinfo`
+* Upgrade your Raspbian/Debian installation: `apt-get update && apt-get upgrade`
+* Install kernel headers to build the driver and build dependencies: `sudo apt install linux-headers-$(uname -r) git libgmp-dev gawk qpdf bison flex make autoconf libtool texinfo` (or `raspberrypi-kernel-headers` on legacy 32-bit Raspbian releases).
 * Clone our repository: `git clone https://github.com/seemoo-lab/nexmon.git`
 * Go into the root directory of our repository: `cd nexmon`
 * The current vendored math libraries are MPFR 4.2.2 and ISL 0.28. The bundled GCC 5.4.1 firmware compiler still needs the older library ABIs; its compatibility sources are preserved in `buildtools/legacy/`. See [MPFR and ISL build notes](buildtools/MATH_LIBRARIES.md).
@@ -207,13 +207,12 @@ Also, disabling power saving features (`iw dev wlan0 set power_save off`) can he
 * At this point, monitor mode is active. There is no need to call *airmon-ng*. 
  * The interface already set the Radiotap header, therefore, tools like *tcpdump* or *airodump-ng* can be used out of the box: `tcpdump -i mon0`
  * Helper `monitor-mode.sh` wraps this (idempotent, handles `NetworkManager`/`wpa_supplicant`/`regulatory`): `sudo ./monitor-mode.sh on [channel] [country]` / `sudo ./monitor-mode.sh status` / `sudo ./monitor-mode.sh off` / `sudo ./monitor-mode.sh channel <1-165>`. Env: `STA=wlan0 MON=mon0 CHAN=36 COUNTRY=US NEXUTIL=/path/nexutil QUIESCE=0` (leave `wpa_supplicant` running) `STATE_FILE=/run/nexmon-monitor.state` (0600, `flock`).
- * *Optional*: To make the RPI3 load the modified driver after reboot:
-  * Find the path of the default driver at reboot: `modinfo brcmfmac` #the first line should be the full path
-  * Backup the original driver: `mv "<PATH TO THE DRIVER>/brcmfmac.ko" "<PATH TO THE DRIVER>/brcmfmac.ko.orig"`
-  * Copy the modified driver (Kernel 4.9): `cp /home/pi/nexmon/patches/bcm43430a1/7_45_41_46/nexmon/brcmfmac_kernel49/brcmfmac.ko "<PATH TO THE DRIVER>/"`
-  * Copy the modified driver (Kernel 4.14): `cp /home/pi/nexmon/patches/bcm43430a1/7_45_41_46/nexmon/brcmfmac_4.14.y-nexmon/brcmfmac.ko "<PATH TO THE DRIVER>/"`
-  * Probe all modules and generate new dependency: `depmod -a`
-  * The new driver should be loaded by default after reboot: `reboot`
+ * *Optional*: To make the Raspberry Pi load the modified driver after reboot:
+  * Find the path of the default driver: `modinfo brcmfmac | grep filename`
+  * Backup the original driver: `sudo mv "<PATH TO THE DRIVER>/brcmfmac.ko" "<PATH TO THE DRIVER>/brcmfmac.ko.orig"`
+  * Copy the modified driver (replace `<ver>` with your kernel release, e.g. 6.6): `sudo cp patches/driver/brcmfmac_<ver>.y-nexmon/brcmfmac.ko "<PATH TO THE DRIVER>/"`
+  * Probe all modules and generate new dependency: `sudo depmod -a`
+  * The new driver should be loaded by default after reboot: `sudo reboot`
   * **Note:** It is possible to connect to an access point or run your own access point in parallel to the monitor mode interface on the `wlan0` interface.
 
 # How to build the utilities
@@ -354,6 +353,12 @@ Any use of this project which results in an academic publication or other public
 	year = {2017}
 }
 ```
+
+# License & Component Boundaries
+* **Nexmon Framework & Buildtools**: GNU General Public License v3.0 ([LICENSE.txt](LICENSE.txt)).
+* **Kernel Driver Patches (`patches/driver/`)**: Dual BSD / GPLv2 licensed to maintain compatibility with the upstream Linux kernel network subsystem.
+* **Python SDK & Tooling (`python/pynexmon`, `nexfirmware.py`)**: GPL-3.0-or-later.
+* **Firmware Binaries (`firmwares/`)**: Original stock firmware images are proprietary microcode copyrighted by Broadcom / Cypress and distributed under their respective licensing and redistribution agreements. Nexmon patch definitions and assembly/C modifications are open-source.
 
 # Contact
 * [Matthias Schulz](https://seemoo.tu-darmstadt.de/mschulz) <mschulz@seemoo.tu-darmstadt.de>

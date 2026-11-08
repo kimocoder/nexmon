@@ -15,7 +15,10 @@ import socket
 import sys
 import time
 
-from scapy.all import Dot11, Dot11Elt, Dot11ProbeReq, RadioTap
+try:
+    from scapy.all import Dot11, Dot11Elt, Dot11ProbeReq, RadioTap
+except ImportError:
+    sys.exit("Error: 'scapy' is required to run hwcheck_nonblock.py. Install it via: pip install scapy")
 
 DEFAULT_IFACE = "mon0"
 DEFAULT_COUNT = 500

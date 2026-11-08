@@ -1,9 +1,14 @@
+import sys
 import time
 import subprocess
-from scapy.all import (
-    RadioTap, Dot11, Dot11ProbeReq, Dot11Beacon, Dot11Elt, 
-    sendp, conf
-)
+
+try:
+    from scapy.all import (
+        RadioTap, Dot11, Dot11ProbeReq, Dot11Beacon, Dot11Elt, 
+        sendp, conf
+    )
+except ImportError:
+    sys.exit("Error: 'scapy' is required to run benchmark_multiframe.py. Install it via: pip install scapy")
 
 conf.sniff_promisc = 0
 iface = "mon0"

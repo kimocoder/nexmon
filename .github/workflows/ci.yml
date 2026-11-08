@@ -9,6 +9,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 # Runners are pinned instead of using ubuntu-latest, which migrates to Ubuntu
 # 26.04 during the 2026-10-19..2026-11-19 rollout (actions/runner-images#14748).
 # The native and firmware builds depend on i386 multiarch packages from 24.04.
@@ -92,7 +95,7 @@ jobs:
           make -C buildtools/gcc-nexmon-plugin
 
       - name: Compile-Check Kernel Drivers
-        run: python buildtools/scripts/check_drivers.py --compile || true
+        run: python buildtools/scripts/check_drivers.py --compile
 
       - name: Run Unit Tests
         run: python -m unittest discover -s tests -v

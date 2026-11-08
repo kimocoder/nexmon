@@ -223,6 +223,8 @@ def read_firmware_blob(path: Union[str, Path]) -> bytes:
             import zstandard
             dctx = zstandard.ZstdDecompressor()
             return dctx.decompress(data, max_output_size=32 * 1024 * 1024)
+        except ImportError:
+            pass
         except Exception:
             pass
         try:
@@ -230,6 +232,10 @@ def read_firmware_blob(path: Union[str, Path]) -> bytes:
             return res.stdout
         except Exception:
             pass
+        raise RuntimeError(
+            f"Failed to decompress {path}: file is zstd-compressed, but neither the python "
+            "'zstandard' module nor the 'zstd' command-line utility could decompress it."
+        )
     return data
 
 # Known SDIO Device IDs

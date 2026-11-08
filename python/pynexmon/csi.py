@@ -333,6 +333,9 @@ class NetlinkCSIReceiver:
             )
         self._mcast_group_id = mcgrps[self.group_name]
 
+        if not hasattr(socket, "AF_NETLINK"):
+            raise OSError("AF_NETLINK is not supported on this operating system")
+
         s = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW, NETLINK_GENERIC)
         try:
             # Request larger socket buffer for high-bandwidth capture (80/160MHz)

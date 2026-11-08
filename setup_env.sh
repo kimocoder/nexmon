@@ -8,7 +8,7 @@ export HOSTUNAME=$(uname -s)
 export PLATFORMUNAME=$(uname -m)
 
 if [ -z "${ARCH:-}" ]; then
-    if [ "$PLATFORMUNAME" == "aarch64" ]; then
+    if [ "$PLATFORMUNAME" = "aarch64" ]; then
         export ARCH=arm64
     else
         export ARCH=arm
@@ -16,7 +16,7 @@ if [ -z "${ARCH:-}" ]; then
 fi
 
 if [ -z "${SUBARCH:-}" ]; then
-    if [ "$PLATFORMUNAME" == "aarch64" ]; then
+    if [ "$PLATFORMUNAME" = "aarch64" ]; then
         export SUBARCH=arm64
     else
         export SUBARCH=arm
@@ -24,7 +24,7 @@ if [ -z "${SUBARCH:-}" ]; then
 fi
 
 if [ -z "${KERNEL:-}" ]; then
-    if [ "$PLATFORMUNAME" == "aarch64" ]; then
+    if [ "$PLATFORMUNAME" = "aarch64" ]; then
         export KERNEL=kernel8
     else
         export KERNEL=kernel7
@@ -33,19 +33,19 @@ fi
 
 export NEXMON_ROOT=$(pwd)
 
-if [ "$HOSTUNAME" == "Darwin" ]; then
+if [ "$HOSTUNAME" = "Darwin" ]; then
     export CC=$NEXMON_ROOT/buildtools/gcc-arm-none-eabi-5_4-2016q2-osx/bin/arm-none-eabi-
     export CCPLUGIN=$NEXMON_ROOT/buildtools/gcc-nexmon-plugin-osx/nexmon.so
     export ZLIBFLATE="openssl zlib"
-elif [ "$HOSTUNAME" == "Linux" ] && [ "$PLATFORMUNAME" == "x86_64" ]; then
+elif [ "$HOSTUNAME" = "Linux" ] && [ "$PLATFORMUNAME" = "x86_64" ]; then
     export CC=$NEXMON_ROOT/buildtools/gcc-arm-none-eabi-5_4-2016q2-linux-x86/bin/arm-none-eabi-
     export CCPLUGIN=$NEXMON_ROOT/buildtools/gcc-nexmon-plugin/nexmon.so
     export ZLIBFLATE="zlib-flate -compress"
-elif [ "$HOSTUNAME" == "Linux" ] && [ "$PLATFORMUNAME" == "aarch64" ] && [ "${USE_LEGACY_GCC:-0}" != "1" ] && [ -x "$NEXMON_ROOT/buildtools/arm-gnu-toolchain-15.3.rel1-aarch64-arm-none-eabi/bin/arm-none-eabi-gcc" ]; then
+elif [ "$HOSTUNAME" = "Linux" ] && [ "$PLATFORMUNAME" = "aarch64" ] && [ "${USE_LEGACY_GCC:-0}" != "1" ] && [ -x "$NEXMON_ROOT/buildtools/arm-gnu-toolchain-15.3.rel1-aarch64-arm-none-eabi/bin/arm-none-eabi-gcc" ]; then
     export CC=$NEXMON_ROOT/buildtools/arm-gnu-toolchain-15.3.rel1-aarch64-arm-none-eabi/bin/arm-none-eabi-
     export CCPLUGIN=$NEXMON_ROOT/buildtools/gcc-nexmon-plugin-aarch64/nexmon.so
     export ZLIBFLATE="zlib-flate -compress"
-elif [ "$HOSTUNAME" == "Linux" ] && { [ "$PLATFORMUNAME" == "armv7l" ] || [ "$PLATFORMUNAME" == "armv6l" ] || [ "$PLATFORMUNAME" == "aarch64" ]; }; then
+elif [ "$HOSTUNAME" = "Linux" ] && { [ "$PLATFORMUNAME" = "armv7l" ] || [ "$PLATFORMUNAME" = "armv6l" ] || [ "$PLATFORMUNAME" = "aarch64" ]; }; then
     export CC=$NEXMON_ROOT/buildtools/gcc-arm-none-eabi-5_4-2016q2-linux-armv7l/bin/arm-none-eabi-
     export CCPLUGIN=$NEXMON_ROOT/buildtools/gcc-nexmon-plugin-arm/nexmon.so
     export ZLIBFLATE="zlib-flate -compress"
@@ -105,7 +105,7 @@ fi
 # runs its x86_64 clang under qemu: slow, and it aborts at random with
 # "libc++abi: Pure virtual function called!". buildtools/ndk-native-aarch64.sh
 # installs a native one alongside it; use it when it is there.
-if [ -n "${NDK_ROOT:-}" ] && [ "$PLATFORMUNAME" == "aarch64" ]; then
+if [ -n "${NDK_ROOT:-}" ] && [ "$PLATFORMUNAME" = "aarch64" ]; then
     if [ -x "$NDK_ROOT/toolchains/llvm/prebuilt/linux-aarch64/bin/clang" ]; then
         export NDK_NATIVE_HOST_ARCH=aarch64
         export GNUMAKE="$NEXMON_ROOT/buildtools/ndk-make-native"

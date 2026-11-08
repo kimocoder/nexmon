@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Regression test suite for kernel driver trees, syntax integrity, and Kbuild compilation."""
 
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -88,6 +89,9 @@ class TestKernelDriverBuildAndIntegrity(unittest.TestCase):
 
     def test_kbuild_compilation_if_kernel_headers_present(self):
         """If Linux kernel build/headers are available, the matching driver must compile cleanly."""
+        if os.environ.get("SKIP_KBUILD_TEST") == "1" or os.environ.get("FAST_TESTS") == "1":
+            self.skipTest("Skipping kbuild compilation test (SKIP_KBUILD_TEST/FAST_TESTS requested)")
+
         kdir = check_drivers.find_kernel_build_dir()
         if not kdir:
             self.skipTest("No Linux kernel build tree available on this host")
