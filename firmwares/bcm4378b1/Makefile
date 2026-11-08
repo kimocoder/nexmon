@@ -3,9 +3,13 @@ SUBDIRS = $(dir $(wildcard */definitions.mk))
 all: $(SUBDIRS)
 
 $(SUBDIRS): FORCE
-ifndef (,$(wildcard $(addprefix $@, Makefile)))
+ifneq (,$(wildcard $(addprefix $@, Makefile)))
 	@printf "\033[0;31m  EXECUTING MAKE FOR FIRMWARE VERSION\033[0m %s\n" $@
 	$(Q)$(MAKE) -C $@
 endif
+
+clean: FORCE
+	@printf "\033[0;31m  CLEANING FIRMWARE VERSIONS\033[0m\n"
+	$(Q)for dir in $(SUBDIRS); do [ -f $$dir/Makefile ] && $(MAKE) -C $$dir clean || exit 1; done
 
 FORCE:
