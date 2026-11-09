@@ -7,10 +7,12 @@ import socket
 import struct
 import sys
 import unittest
+from unittest import mock
 
 NEXMON_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(NEXMON_ROOT, "python"))
 
+from pynexmon import csi
 from pynexmon.csi import (
     CSIReceiver,
     NetlinkCSIReceiver,
@@ -165,19 +167,19 @@ class TestCSIPipeline(unittest.TestCase):
         # Attr 1 (RAW)
         nla1_len = 4 + len(raw_csi)
         pad1 = (4 - (len(raw_csi) % 4)) % 4
-        nla1 = struct.pack("<HH", nla1_len, NEXMON_CSI_ATTR_RAW) + raw_csi + (b"\0" * pad1)
+        nla1 = struct.pack("=HH", nla1_len, NEXMON_CSI_ATTR_RAW) + raw_csi + (b"\0" * pad1)
 
         # Attr 2 (TSFT: u64)
-        nla2 = struct.pack("<HHQ", 12, NEXMON_CSI_ATTR_TSFT, tsft_us)
+        nla2 = struct.pack("=HHQ", 12, NEXMON_CSI_ATTR_TSFT, tsft_us)
 
         # Attr 3 (IFINDEX: u32)
-        nla3 = struct.pack("<HHI", 8, NEXMON_CSI_ATTR_IFINDEX, ifindex)
+        nla3 = struct.pack("=HHI", 8, NEXMON_CSI_ATTR_IFINDEX, ifindex)
 
         attrs = nla1 + nla2 + nla3
-        genl_hdr = struct.pack("<BBH", NEXMON_CSI_CMD_SAMPLE, 1, 0)
+        genl_hdr = struct.pack("=BBH", NEXMON_CSI_CMD_SAMPLE, 1, 0)
         family_id = 99
         nl_len = 16 + len(genl_hdr) + len(attrs)
-        nl_hdr = struct.pack("<IHHII", nl_len, family_id, 0, 1, 0)
+        nl_hdr = struct.pack("=IHHII", nl_len, family_id, 0, 1, 0)
 
         packet_bytes = nl_hdr + genl_hdr + attrs
 
@@ -199,6 +201,75 @@ class TestCSIPipeline(unittest.TestCase):
         self.assertEqual(pkt.ifindex, ifindex)
         self.assertAlmostEqual(pkt.timestamp, tsft_us / 1e6)
         self.assertEqual(pkt.num_subcarriers, 64)
+
+    def test_netlink_simulated_big_endian(self):
+        """Native Netlink metadata must not change firmware little-endian CSI."""
+        real_struct = struct
+
+        def translate(fmt):
+            return ">" + fmt[1:] if fmt.startswith("=") else fmt
+
+        native_struct = mock.Mock()
+        native_struct.pack.side_effect = lambda fmt, *args: real_struct.pack(translate(fmt), *args)
+        native_struct.unpack.side_effect = lambda fmt, data: real_struct.unpack(translate(fmt), data)
+        native_struct.unpack_from.side_effect = lambda fmt, data, offset=0: real_struct.unpack_from(
+            translate(fmt), data, offset
+        )
+        # Reuse the synthetic receiver test with big-endian native metadata,
+        # while its explicitly little-endian firmware fixture stays unchanged.
+        with mock.patch.object(csi, "struct", native_struct), mock.patch(
+            __name__ + ".struct", native_struct
+        ):
+            self.test_netlink_csi_receiver_synthetic_decode()
+
+    def test_resolve_genl_family_native_metadata(self):
+        for endian in ("<", ">"):
+            with self.subTest(endian=endian):
+                def attr(kind, data, endian=endian):
+                    length = 4 + len(data)
+                    return struct.pack(endian + "HH", length, kind) + data + b"\0" * (-length % 4)
+
+                nested = attr(csi.CTRL_ATTR_MCAST_GRP_NAME, b"csi\0")
+                nested += attr(csi.CTRL_ATTR_MCAST_GRP_ID, struct.pack(endian + "I", 0x12345678))
+                attrs = attr(csi.CTRL_ATTR_FAMILY_ID, struct.pack(endian + "H", 0x1234))
+                attrs += attr(csi.CTRL_ATTR_MCAST_GROUPS, attr(1, nested))
+                reply = struct.pack(endian + "IHHII", 20 + len(attrs), 16, 0, 1, 0)
+                reply += struct.pack(endian + "BBH", 1, 1, 0) + attrs
+                sock = mock.Mock()
+                sock.recv.return_value = reply
+                native_struct = mock.Mock()
+
+                def translate(fmt, endian=endian):
+                    self.assertTrue(fmt.startswith("="), fmt)
+                    return endian + fmt[1:]
+
+                native_struct.pack.side_effect = lambda fmt, *args: struct.pack(translate(fmt), *args)
+                native_struct.unpack.side_effect = lambda fmt, data: struct.unpack(translate(fmt), data)
+                native_struct.unpack_from.side_effect = lambda fmt, data, offset=0: struct.unpack_from(
+                    translate(fmt), data, offset
+                )
+                with mock.patch.object(csi.socket, "socket", return_value=sock), mock.patch.object(
+                    csi, "struct", native_struct
+                ):
+                    self.assertEqual(resolve_genl_family("nexmon_csi"), (0x1234, {"csi": 0x12345678}))
+                sent = sock.send.call_args.args[0]
+                self.assertEqual(struct.unpack_from(endian + "I", sent)[0], len(sent))
+                self.assertEqual(struct.unpack_from(endian + "H", sent, 22)[0], csi.CTRL_ATTR_FAMILY_NAME)
+                sock.close.assert_called_once()
+
+    def test_cli_stream_timeout(self):
+        for count, maximum, timeout in ((0, None, None), (3, 3, 5.0)):
+            with self.subTest(count=count):
+                receiver = mock.MagicMock()
+                receiver.__enter__.return_value = receiver
+                receiver.backend = "udp"
+                receiver.stream.return_value = iter(())
+                with mock.patch.object(sys, "argv", ["csi", "--count", str(count)]), mock.patch.object(
+                    csi, "CSIReceiver", return_value=receiver
+                ), mock.patch("builtins.print"):
+                    csi.main()
+                receiver.stream.assert_called_once_with(max_packets=maximum, timeout=timeout)
+                receiver.__exit__.assert_called_once()
 
     def test_csi_receiver_mode_selection(self):
         rx_udp = CSIReceiver(mode="udp", port=5500)

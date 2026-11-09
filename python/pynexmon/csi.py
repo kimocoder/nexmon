@@ -245,19 +245,19 @@ def resolve_genl_family(family_name: str, timeout: float = 1.0) -> Tuple[int, Di
         name_bytes = family_name.encode("utf-8") + b"\0"
         attr_len = 4 + len(name_bytes)
         pad = (4 - (len(name_bytes) % 4)) % 4
-        attr = struct.pack("HH", attr_len, CTRL_ATTR_FAMILY_NAME) + name_bytes + (b"\0" * pad)
+        attr = struct.pack("=HH", attr_len, CTRL_ATTR_FAMILY_NAME) + name_bytes + (b"\0" * pad)
 
-        genl_hdr = struct.pack("BBH", CTRL_CMD_GETFAMILY, 1, 0)
+        genl_hdr = struct.pack("=BBH", CTRL_CMD_GETFAMILY, 1, 0)
         total_len = 16 + len(genl_hdr) + len(attr)
-        nlmsghdr = struct.pack("IHHII", total_len, GENL_ID_CTRL, 1, 1, os.getpid() & 0xFFFFFFFF)
+        nlmsghdr = struct.pack("=IHHII", total_len, GENL_ID_CTRL, 1, 1, os.getpid() & 0xFFFFFFFF)
         msg = nlmsghdr + genl_hdr + attr
 
         s.send(msg)
         reply = s.recv(8192)
 
-        nl_len, nl_type, nl_flags, nl_seq, nl_pid = struct.unpack_from("IHHII", reply, 0)
+        nl_len, nl_type, nl_flags, nl_seq, nl_pid = struct.unpack_from("=IHHII", reply, 0)
         if nl_type == 2:  # NLMSG_ERROR
-            errno = -struct.unpack_from("i", reply, 16)[0]
+            errno = -struct.unpack_from("=i", reply, 16)[0]
             raise RuntimeError(f"Netlink error resolving family '{family_name}': errno={errno}")
 
         offset = 20
@@ -265,18 +265,18 @@ def resolve_genl_family(family_name: str, timeout: float = 1.0) -> Tuple[int, Di
         mcgrps: Dict[str, int] = {}
 
         while offset + 4 <= min(nl_len, len(reply)):
-            nla_len, nla_type = struct.unpack_from("HH", reply, offset)
+            nla_len, nla_type = struct.unpack_from("=HH", reply, offset)
             if nla_len < 4:
                 break
             attr_data = reply[offset + 4 : offset + nla_len]
             attr_type = nla_type & 0x3FFF
 
             if attr_type == CTRL_ATTR_FAMILY_ID and len(attr_data) >= 2:
-                fam_id = struct.unpack("<H", attr_data[:2])[0]
+                fam_id = struct.unpack("=H", attr_data[:2])[0]
             elif attr_type == CTRL_ATTR_MCAST_GROUPS:
                 grp_off = 0
                 while grp_off + 4 <= len(attr_data):
-                    gnla_len, _ = struct.unpack_from("HH", attr_data, grp_off)
+                    gnla_len, _ = struct.unpack_from("=HH", attr_data, grp_off)
                     if gnla_len < 4 or grp_off + gnla_len > len(attr_data):
                         break
                     nested = attr_data[grp_off + 4 : grp_off + gnla_len]
@@ -284,7 +284,7 @@ def resolve_genl_family(family_name: str, timeout: float = 1.0) -> Tuple[int, Di
                     g_name = None
                     g_id = None
                     while noff + 4 <= len(nested):
-                        sub_len, sub_type = struct.unpack_from("HH", nested, noff)
+                        sub_len, sub_type = struct.unpack_from("=HH", nested, noff)
                         if sub_len < 4 or noff + sub_len > len(nested):
                             break
                         sub_data = nested[noff + 4 : noff + sub_len]
@@ -292,7 +292,7 @@ def resolve_genl_family(family_name: str, timeout: float = 1.0) -> Tuple[int, Di
                         if stype == CTRL_ATTR_MCAST_GRP_NAME:
                             g_name = sub_data.rstrip(b"\0").decode("utf-8", errors="replace")
                         elif stype == CTRL_ATTR_MCAST_GRP_ID and len(sub_data) >= 4:
-                            g_id = struct.unpack("<I", sub_data[:4])[0]
+                            g_id = struct.unpack("=I", sub_data[:4])[0]
                         noff += (sub_len + 3) & ~3
                     if g_name and g_id is not None:
                         mcgrps[g_name] = g_id
@@ -387,7 +387,7 @@ class NetlinkCSIReceiver:
 
         offset = 0
         while offset + 16 <= len(data):
-            nl_len, nl_type, nl_flags, nl_seq, nl_pid = struct.unpack_from("IHHII", data, offset)
+            nl_len, nl_type, nl_flags, nl_seq, nl_pid = struct.unpack_from("=IHHII", data, offset)
             if nl_len < 16 or offset + nl_len > len(data):
                 break
             msg_bytes = data[offset : offset + nl_len]
@@ -401,7 +401,7 @@ class NetlinkCSIReceiver:
             # Generic Netlink header: cmd (1B), version (1B), reserved (2B)
             if len(msg_bytes) < 20:
                 continue
-            cmd, ver, res = struct.unpack_from("BBH", msg_bytes, 16)
+            cmd, ver, res = struct.unpack_from("=BBH", msg_bytes, 16)
             if cmd != NEXMON_CSI_CMD_SAMPLE:
                 continue
 
@@ -412,7 +412,7 @@ class NetlinkCSIReceiver:
             ifindex: Optional[int] = None
 
             while attr_offset + 4 <= len(msg_bytes):
-                nla_len, nla_type = struct.unpack_from("HH", msg_bytes, attr_offset)
+                nla_len, nla_type = struct.unpack_from("=HH", msg_bytes, attr_offset)
                 if nla_len < 4 or attr_offset + nla_len > len(msg_bytes):
                     break
                 attr_data = msg_bytes[attr_offset + 4 : attr_offset + nla_len]
@@ -421,9 +421,9 @@ class NetlinkCSIReceiver:
                 if atype == NEXMON_CSI_ATTR_RAW:
                     raw_payload = attr_data
                 elif atype == NEXMON_CSI_ATTR_TSFT and len(attr_data) >= 8:
-                    tsft_us = struct.unpack("<Q", attr_data[:8])[0]
+                    tsft_us = struct.unpack("=Q", attr_data[:8])[0]
                 elif atype == NEXMON_CSI_ATTR_IFINDEX and len(attr_data) >= 4:
-                    ifindex = struct.unpack("<I", attr_data[:4])[0]
+                    ifindex = struct.unpack("=I", attr_data[:4])[0]
 
                 attr_offset += (nla_len + 3) & ~3
 
@@ -632,7 +632,7 @@ def main():
         count = 0
         t0 = time.time()
         try:
-            for pkt in receiver.stream(max_packets=args.count if args.count > 0 else None, timeout=5.0):
+            for pkt in receiver.stream(max_packets=args.count if args.count > 0 else None, timeout=None if args.count == 0 else 5.0):
                 count += 1
                 if args.json:
                     print(pkt.to_json())
