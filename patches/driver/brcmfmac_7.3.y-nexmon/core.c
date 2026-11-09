@@ -292,7 +292,6 @@ nexmon_nl_ioctl_handler(struct sk_buff *skb)
 
     if (ndev->netdev_ops != &brcmf_netdev_ops_pri &&
         ndev->netdev_ops != &brcmf_netdev_ops_mon) {
-        rtnl_unlock();
         pr_err_ratelimited("brcmfmac: NEXMON: interface index %d is not a brcmfmac device\n",
                            ifindex);
         netlink_ack(skb, nlh, -ENODEV, NULL);
@@ -302,14 +301,12 @@ nexmon_nl_ioctl_handler(struct sk_buff *skb)
     ifp = netdev_priv(ndev);
 
     if (ifp == NULL || ifp->drvr == NULL || ifp->drvr->bus_if == NULL) {
-        rtnl_unlock();
         pr_err_ratelimited("brcmfmac: NEXMON: interface torn down\n");
         netlink_ack(skb, nlh, -ENODEV, NULL);
         goto out_put;
     }
 
     if (ifp->drvr->bus_if->state != BRCMF_BUS_UP) {
-        rtnl_unlock();
         pr_err_ratelimited("brcmfmac: NEXMON: bus not UP (state=%d), ignoring ioctl\n",
                            ifp->drvr->bus_if->state);
         netlink_ack(skb, nlh, -ENETDOWN, NULL);
@@ -348,7 +345,6 @@ nexmon_nl_ioctl_handler(struct sk_buff *skb)
             dev_hold(target_ndev);
         }
     }
-    rtnl_unlock();
 
     if (frame->cmd == NEX_SET_CHANSPEC_OVERRIDE) {
         u16 cs = 0;
@@ -915,6 +911,7 @@ nexmon_nl_ioctl_handler(struct sk_buff *skb)
     }
 
 out_put:
+    rtnl_unlock();
     if (target_ndev)
         dev_put(target_ndev);
     dev_put(ndev);
@@ -1447,7 +1444,6 @@ static int brcmf_rx_hdrpull(struct brcmf_pub *drvr, struct sk_buff *skb,
 			    struct brcmf_if **ifp)
 {
 	int ret;
-	struct brcmf_if *mon_if;
 
 	/* process and remove protocol-specific header */
 	ret = brcmf_proto_hdrpull(drvr, true, skb, ifp);
@@ -1459,16 +1455,8 @@ static int brcmf_rx_hdrpull(struct brcmf_pub *drvr, struct sk_buff *skb,
 		return -ENODATA;
 	}
 
-	/* If a monitor interface is active or frame carries radiotap header, route to mon_if */
-	mon_if = READ_ONCE(drvr->mon_if);
-	if (mon_if && mon_if->ndev && netif_running(mon_if->ndev)) {
-		struct ieee80211_radiotap_header *rth = (void *)skb->data;
-		if (skb->len >= sizeof(*rth) && rth->it_version == 0 &&
-		    le16_to_cpu(rth->it_len) >= sizeof(*rth) &&
-		    le16_to_cpu(rth->it_len) <= skb->len) {
-			*ifp = mon_if;
-		}
-	} else if (!mon_if) {
+	/* Select the monitor from the live interface list, without caching it. */
+	{
 		int i;
 		for (i = 0; i < BRCMF_MAX_IFS; i++) {
 			struct brcmf_if *tmp = READ_ONCE(drvr->iflist[i]);
@@ -1480,7 +1468,6 @@ static int brcmf_rx_hdrpull(struct brcmf_pub *drvr, struct sk_buff *skb,
 				    le16_to_cpu(rth->it_len) >= sizeof(*rth) &&
 				    le16_to_cpu(rth->it_len) <= skb->len) {
 					*ifp = tmp;
-					WRITE_ONCE(drvr->mon_if, tmp);
 					break;
 				}
 			}
@@ -2894,6 +2881,11 @@ void brcmf_detach(struct device *dev)
 	if (drvr == NULL)
 		return;
 
+	/* Drain Netlink commands before teardown; later commands see BUS_DOWN. */
+	rtnl_lock();
+	brcmf_bus_change_state(bus_if, BRCMF_BUS_DOWN);
+	rtnl_unlock();
+
 #ifdef CONFIG_INET
 	unregister_inetaddr_notifier(&drvr->inetaddr_notifier);
 #endif
@@ -2902,14 +2894,14 @@ void brcmf_detach(struct device *dev)
 	unregister_inet6addr_notifier(&drvr->inet6addr_notifier);
 #endif
 
-	brcmf_bus_change_state(bus_if, BRCMF_BUS_DOWN);
-
 	/* Make sure no monitor recreate is queued or mid-flight while we tear
 	 * the stack down. The intent flag is untouched, so a following re-probe
 	 * re-arms the replay if the session was still meant to be live. */
 	cancel_work_sync(&drvr->mon_restore_work);
 
-	WRITE_ONCE(nexmon_default_ifindex, 0);
+	if (drvr->iflist[0] && drvr->iflist[0]->ndev &&
+	    drvr->iflist[0]->ndev->ifindex == READ_ONCE(nexmon_default_ifindex))
+		WRITE_ONCE(nexmon_default_ifindex, 0);
 
 	/* make sure primary interface removed last */
 	for (i = BRCMF_MAX_IFS - 1; i > -1; i--) {

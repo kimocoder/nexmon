@@ -38,6 +38,78 @@ class TestC01DriverNetlinkHardening(unittest.TestCase):
             self.assertNotIn("nlmsg_new(4, 0)", text, ver)
             self.assertNotIn("nlh->nlmsg_pid", text, ver)
 
+    def test_all_drivers_clear_mon_if_in_net_detach(self):
+        """All 14 driver trees must reset drvr->mon_if to NULL in brcmf_net_detach."""
+        drivers = sorted(ROOT.glob("patches/driver/brcmfmac_*/core.c"))
+        self.assertEqual(len(drivers), 14)
+        for core_c in drivers:
+            ver = core_c.parent.name
+            text = core_c.read_text()
+            self.assertIn("ifp->drvr->mon_if == ifp", text, f"{ver} does not check ifp->drvr->mon_if")
+            self.assertIn("WRITE_ONCE(ifp->drvr->mon_if, NULL)", text, f"{ver} does not clear mon_if")
+
+    def test_all_drivers_scoped_nexmon_default_ifindex_reset(self):
+        """All 14 driver trees must guard nexmon_default_ifindex reset in brcmf_detach."""
+        drivers = sorted(ROOT.glob("patches/driver/brcmfmac_*/core.c"))
+        self.assertEqual(len(drivers), 14)
+        for core_c in drivers:
+            ver = core_c.parent.name
+            text = core_c.read_text()
+            self.assertIn(
+                "drvr->iflist[0]->ndev->ifindex == READ_ONCE(nexmon_default_ifindex)",
+                text,
+                f"{ver} unconditionally resets nexmon_default_ifindex in brcmf_detach",
+            )
+
+    def test_all_drivers_serialize_netlink_and_teardown(self):
+        """RTNL covers every command exit, and teardown first drains commands."""
+        for core_c in sorted(ROOT.glob("patches/driver/brcmfmac_*/core.c")):
+            text = core_c.read_text()
+            handler = text.split("nexmon_nl_ioctl_handler(struct sk_buff *skb)", 1)[1]
+            handler = handler.split("\n}", 1)[0]
+            self.assertEqual(handler.count("rtnl_lock();"), 1, core_c.parent.name)
+            self.assertEqual(handler.count("rtnl_unlock();"), 2, core_c.parent.name)
+            self.assertIn("out_put:\n    rtnl_unlock();", handler)
+            self.assertIn("if (!ndev) {\n        rtnl_unlock();", handler)
+            detach = text.split("void brcmf_detach(struct device *dev)", 1)[1]
+            detach = detach.split("\n}", 1)[0]
+            self.assertRegex(
+                detach,
+                r"rtnl_lock\(\);\s*brcmf_bus_change_state\(bus_if, BRCMF_BUS_DOWN\);\s*rtnl_unlock\(\);",
+            )
+            self.assertLess(detach.index("rtnl_unlock();"), detach.index("/* make sure primary interface removed last */"))
+
+    def test_rx_does_not_cache_monitor_interface(self):
+        """RX must not republish a monitor pointer cleared during deletion."""
+        for core_c in sorted(ROOT.glob("patches/driver/brcmfmac_*/core.c")):
+            text = core_c.read_text()
+            self.assertNotIn("mon_if = READ_ONCE(drvr->mon_if)", text, core_c.parent.name)
+            self.assertNotIn("WRITE_ONCE(drvr->mon_if, tmp)", text, core_c.parent.name)
+
+    def test_all_drivers_null_nl_sock_on_exit(self):
+        """All 14 driver trees must null nl_sock on driver exit."""
+        drivers = sorted(ROOT.glob("patches/driver/brcmfmac_*/core.c"))
+        self.assertEqual(len(drivers), 14)
+        for core_c in drivers:
+            ver = core_c.parent.name
+            text = core_c.read_text()
+            exit_idx = text.rfind("__exit")
+            self.assertNotEqual(exit_idx, -1, f"{ver} missing __exit function")
+            self.assertIn(
+                "nl_sock = NULL;",
+                text[exit_idx:],
+                f"{ver} does not set nl_sock = NULL in module exit function",
+            )
+
+    def test_modern_trees_strscpy_macro(self):
+        """Modern driver trees (6.1+) must define strlcpy fallback to strscpy."""
+        headers = sorted(ROOT.glob("patches/driver/brcmfmac_6*.y-nexmon/common.h")) + \
+                  sorted(ROOT.glob("patches/driver/brcmfmac_7*.y-nexmon/common.h"))
+        self.assertEqual(len(headers), 7)
+        for hdr in headers:
+            text = hdr.read_text()
+            self.assertIn("#define strlcpy(dest,src,len) strscpy(dest,src,len)", text, hdr.parent.name)
+
 
 class TestC02ObjmemAlignmentAndMask(unittest.TestCase):
     """C-02: Verify wlc_bmac_write_objmem32 and wlc_bmac_write_objmem32_objaddr handle odd DWORDs."""

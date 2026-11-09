@@ -5,9 +5,15 @@
 #ifndef BRCMFMAC_COMMON_H
 #define BRCMFMAC_COMMON_H
 
+#include <linux/version.h>
 #include <linux/platform_device.h>
 #include <linux/platform_data/brcmfmac.h>
 #include "fwil_types.h"
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,8,0)
+#ifndef strlcpy
+#define strlcpy(dest,src,len) strscpy(dest,src,len)
+#endif
+#endif
 
 #define BRCMF_FW_ALTPATH_LEN			256
 

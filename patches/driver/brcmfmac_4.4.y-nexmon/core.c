@@ -206,7 +206,6 @@ nexmon_nl_ioctl_handler(struct sk_buff *skb)
     }
 
     if (ndev->netdev_ops != &brcmf_netdev_ops_pri) {
-        rtnl_unlock();
         pr_err_ratelimited("brcmfmac: NEXMON: interface index %d is not a brcmfmac device\n",
                            ifindex);
         nexmon_nl_ack(skb, nlh, -ENODEV);
@@ -216,14 +215,12 @@ nexmon_nl_ioctl_handler(struct sk_buff *skb)
     ifp = netdev_priv(ndev);
 
     if (ifp == NULL || ifp->drvr == NULL || ifp->drvr->bus_if == NULL) {
-        rtnl_unlock();
         pr_err_ratelimited("brcmfmac: NEXMON: interface torn down\n");
         nexmon_nl_ack(skb, nlh, -ENODEV);
         goto out_put;
     }
 
     if (ifp->drvr->bus_if->state != BRCMF_BUS_UP) {
-        rtnl_unlock();
         pr_err_ratelimited("brcmfmac: NEXMON: bus not UP (state=%d), ignoring ioctl\n",
                            ifp->drvr->bus_if->state);
         nexmon_nl_ack(skb, nlh, -ENETDOWN);
@@ -244,7 +241,6 @@ nexmon_nl_ioctl_handler(struct sk_buff *skb)
             dev_hold(target_ndev);
         }
     }
-    rtnl_unlock();
 
     if (frame->set) {
         err = brcmf_fil_cmd_data_set(target_ifp, frame->cmd, frame->payload,
@@ -260,7 +256,6 @@ nexmon_nl_ioctl_handler(struct sk_buff *skb)
             struct net_device *mon_ndev;
 
             memcpy(&mon_mode, frame->payload, sizeof(mon_mode));
-            rtnl_lock();
             mon_ndev = target_ifp->ndev;
             if (mon_ndev && mon_ndev->ieee80211_ptr &&
                 mon_ndev->ieee80211_ptr->wiphy) {
@@ -286,7 +281,6 @@ nexmon_nl_ioctl_handler(struct sk_buff *skb)
                     break;
                 }
             }
-            rtnl_unlock();
         }
 
         skb_out = nlmsg_new(4, GFP_KERNEL);
@@ -328,6 +322,7 @@ nexmon_nl_ioctl_handler(struct sk_buff *skb)
     }
 
 out_put:
+    rtnl_unlock();
     if (target_ndev)
         dev_put(target_ndev);
     dev_put(ndev);
@@ -1012,8 +1007,13 @@ fail:
 
 static void brcmf_net_detach(struct net_device *ndev)
 {
-    if (ndev->ifindex == READ_ONCE(nexmon_default_ifindex))
-        WRITE_ONCE(nexmon_default_ifindex, 0);
+	struct brcmf_if *ifp = netdev_priv(ndev);
+
+	if (ifp && ifp->drvr && ifp->drvr->mon_if == ifp)
+		WRITE_ONCE(ifp->drvr->mon_if, NULL);
+
+	if (ndev->ifindex == READ_ONCE(nexmon_default_ifindex))
+		WRITE_ONCE(nexmon_default_ifindex, 0);
 
     if (ndev->reg_state == NETREG_REGISTERED)
         unregister_netdev(ndev);
@@ -1429,13 +1429,19 @@ void brcmf_detach(struct device *dev)
     if (drvr == NULL)
         return;
 
+    /* Drain Netlink commands before teardown; later commands see BUS_DOWN. */
+    rtnl_lock();
+    brcmf_bus_change_state(bus_if, BRCMF_BUS_DOWN);
+    rtnl_unlock();
+
     /* stop firmware event handling */
     brcmf_fweh_detach(drvr);
     if (drvr->config)
         brcmf_p2p_detach(&drvr->config->p2p);
 
-    brcmf_bus_change_state(bus_if, BRCMF_BUS_DOWN);
-    WRITE_ONCE(nexmon_default_ifindex, 0);
+	if (drvr->iflist[0] && drvr->iflist[0]->ndev &&
+	    drvr->iflist[0]->ndev->ifindex == READ_ONCE(nexmon_default_ifindex))
+		WRITE_ONCE(nexmon_default_ifindex, 0);
 
     /* make sure primary interface removed last */
     for (i = BRCMF_MAX_IFS-1; i > -1; i--)
@@ -1553,7 +1559,10 @@ static void __exit brcmfmac_module_exit(void)
     remove_proc_entry("nexmon_consoledump", NULL);
 
     /* NEXMON netlink release */
-    netlink_kernel_release(nl_sock);
+	if (nl_sock) {
+		netlink_kernel_release(nl_sock);
+		nl_sock = NULL;
+	}
 
 #ifdef CONFIG_BRCMFMAC_SDIO
     brcmf_sdio_exit();
