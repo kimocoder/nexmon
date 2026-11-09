@@ -6,8 +6,8 @@
 #
 
 ccflags-y += \
-	-I$(NEXMON_ROOT)/patches/driver/brcmfmac_5.15.y-nexmon	\
-	-I$(NEXMON_ROOT)/patches/driver/brcmfmac_5.15.y-nexmon/include \
+	-I$(src)	\
+	-I$(src)/include \
 	-DDEBUG
 
 obj-$(CONFIG_BRCMFMAC) += brcmfmac.o 

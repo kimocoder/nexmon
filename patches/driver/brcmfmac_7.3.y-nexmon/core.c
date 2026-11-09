@@ -1421,9 +1421,14 @@ void brcmf_netif_mon_rx(struct brcmf_if *ifp, struct sk_buff *skb)
 		rtap->hdr.it_version = PKTHDR_RADIOTAP_VERSION;
 		rtap->hdr.it_len = cpu_to_le16(sizeof(*rtap));
 		rtap->hdr.it_present = cpu_to_le32(BIT(IEEE80211_RADIOTAP_TSFT) |
-						   BIT(IEEE80211_RADIOTAP_FLAGS));
+						   BIT(IEEE80211_RADIOTAP_FLAGS) |
+						   BIT(IEEE80211_RADIOTAP_CHANNEL) |
+						   BIT(IEEE80211_RADIOTAP_DBM_ANTSIGNAL));
 		rtap->tsft = cpu_to_le64(div_u64(ktime_get_boottime_ns(), 1000));
 		rtap->flags = 0;
+		rtap->channel_freq = cpu_to_le16(2412);
+		rtap->channel_flags = cpu_to_le16(IEEE80211_CHAN_2GHZ | IEEE80211_CHAN_OFDM);
+		rtap->dbm_antsignal = -50;
 
 		/* NOTE: 4-byte HW status trimmed safely if present */
 		if (skb->len >= 4)
@@ -1497,7 +1502,7 @@ static int brcmf_rx_hdrpull(struct brcmf_pub *drvr, struct sk_buff *skb,
 			u32 tsf_l = le32_to_cpu(tsf[0]);
 			u32 tsf_h = le32_to_cpu(tsf[1]);
 
-			if (tsf_h == 0 && tsf_l != 0 && !skb_shared(skb)) {
+			if (tsf_h == 0 && tsf_l != 0 && !skb_shared(skb) && !skb_cloned(skb)) {
 				u64 tsf64 = brcmf_mon_recover_tsf64(drvr, tsf_l);
 				tsf[1] = cpu_to_le32((u32)(tsf64 >> 32));
 			}
@@ -1551,6 +1556,9 @@ static bool nexmon_csi_handle_rx(struct brcmf_if *ifp, struct sk_buff *skb)
 
 	uh = (struct udphdr *)(skb->data + ip_hlen);
 	if (uh->dest != htons(5500))
+		return false;
+
+	if (skb_linearize(skb))
 		return false;
 
 	payload = (u8 *)uh + sizeof(struct udphdr);

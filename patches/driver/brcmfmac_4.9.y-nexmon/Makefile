@@ -16,8 +16,8 @@
 # CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ccflags-y += \
-	-I$(NEXMON_ROOT)/patches/driver/brcmfmac_4.9.y-nexmon	\
-	-I$(NEXMON_ROOT)/patches/driver/brcmfmac_4.9.y-nexmon/include
+	-I$(src)	\
+	-I$(src)/include
 
 ccflags-$(CONFIG_BRCMDBG)	+= -DDEBUG
 

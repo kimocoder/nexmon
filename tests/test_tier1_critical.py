@@ -409,5 +409,69 @@ class TestC07AndroidJniHardening(unittest.TestCase):
         self.assertIn("memset(&my_message, 0, sizeof(my_message));", wrap_c)
 
 
+class TestPhase3DriverPortabilityAndHardening(unittest.TestCase):
+    """Phase 3: Verify driver SDIO TX prep guards, bounded NVRAM parsing, radiotap, and Makefiles."""
+
+    def test_sdio_txpkt_postp_guarded_all_trees(self):
+        """All 14 sdio.c trees must place txpkt_postp before done: and guard dummy skbs."""
+        sdio_files = sorted(ROOT.glob("patches/driver/brcmfmac_*/sdio.c"))
+        self.assertEqual(len(sdio_files), 14)
+        for sf in sdio_files:
+            text = sf.read_text()
+            self.assertIn("brcmf_sdio_txpkt_postp", text, sf.name)
+            self.assertIn("ALIGN_SKB_FLAG", text, sf.name)
+            postp_pos = text.find("brcmf_sdio_txpkt_postp(bus, pktq);")
+            done_pos = text.find("done:\n\tskb_queue_walk_safe(pktq, pkt_next, tmp)")
+            self.assertNotEqual(postp_pos, -1, f"Missing txpkt_postp in {sf}")
+            self.assertNotEqual(done_pos, -1, f"Missing done: label in {sf}")
+            self.assertLess(postp_pos, done_pos, f"txpkt_postp must precede done: in {sf}")
+
+    def test_nvram_comment_parsing_bounded_all_trees(self):
+        """All 14 firmware.c trees must use bounded strnchr/memchr for NVRAM parsing."""
+        fw_files = sorted(ROOT.glob("patches/driver/brcmfmac_*/firmware.c"))
+        self.assertEqual(len(fw_files), 14)
+        for ff in fw_files:
+            text = ff.read_text()
+            self.assertIn("strnchr(sol, remaining, '\\n')", text, f"Unbounded strchr in {ff}")
+            self.assertIn("memchr(sol, '\\0', remaining)", text, f"Unbounded memchr in {ff}")
+
+    def test_pci_path_buffer_size_all_trees(self):
+        """All 14 firmware.c trees must declare 32-byte pci_path buffers."""
+        fw_files = sorted(ROOT.glob("patches/driver/brcmfmac_*/firmware.c"))
+        self.assertEqual(len(fw_files), 14)
+        for ff in fw_files:
+            text = ff.read_text()
+            self.assertIn("char pci_path[32];", text, f"pci_path not 32 bytes in {ff}")
+            self.assertIn("char pcie_path[32];", text, f"pcie_path not 32 bytes in {ff}")
+            self.assertNotIn('char pci_path[] = "=pci/?/?";', text, f"Old 9B buffer in {ff}")
+
+    def test_driver_makefiles_kbuild_src(self):
+        """All 14 driver Makefiles must use -I$(src) rather than -I$(NEXMON_ROOT)."""
+        makefiles = sorted(ROOT.glob("patches/driver/brcmfmac_*/Makefile"))
+        self.assertEqual(len(makefiles), 14)
+        for mf in makefiles:
+            text = mf.read_text()
+            self.assertIn("-I$(src)", text, f"Missing -I$(src) in {mf}")
+            self.assertIn("-I$(src)/include", text, f"Missing -I$(src)/include in {mf}")
+            self.assertNotIn("$(NEXMON_ROOT)/patches/driver", text, f"Hardcoded NEXMON_ROOT in {mf}")
+
+    def test_radiotap_fallback_and_csi_73_74(self):
+        """Trees 7.3 and 7.4 must have consistent radiotap lengths, cloned checks, and linear buffers."""
+        for ver in ("7.3", "7.4"):
+            core_c = (ROOT / f"patches/driver/brcmfmac_{ver}.y-nexmon/core.c").read_text()
+            self.assertIn("IEEE80211_RADIOTAP_CHANNEL", core_c, f"Missing CHANNEL in {ver}")
+            self.assertIn("IEEE80211_RADIOTAP_DBM_ANTSIGNAL", core_c, f"Missing DBM_ANTSIGNAL in {ver}")
+            self.assertIn("!skb_shared(skb) && !skb_cloned(skb)", core_c, f"Missing !skb_cloned in {ver}")
+            self.assertIn("skb_linearize(skb)", core_c, f"Missing skb_linearize in {ver}")
+
+    def test_core_515_const_dev_addr(self):
+        """Tree 5.15 must use eth_hw_addr_set instead of direct dev_addr assignment."""
+        core_c = (ROOT / "patches/driver/brcmfmac_5.15.y-nexmon/core.c").read_text()
+        self.assertIn("eth_hw_addr_set(ifp->ndev, ifp->mac_addr);", core_c)
+        self.assertIn("eth_hw_addr_set(ndev, ifp->mac_addr);", core_c)
+        self.assertNotIn("memcpy(ifp->ndev->dev_addr, ifp->mac_addr, ETH_ALEN);", core_c)
+        self.assertNotIn("memcpy(ndev->dev_addr, ifp->mac_addr, ETH_ALEN);", core_c)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

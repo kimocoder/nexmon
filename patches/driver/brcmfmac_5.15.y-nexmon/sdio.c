@@ -2315,14 +2315,18 @@ static int brcmf_sdio_txpkt(struct brcmf_sdio *bus, struct sk_buff_head *pktq,
 
 	sdio_release_host(bus->sdiodev->func1);
 
-done:
 	brcmf_sdio_txpkt_postp(bus, pktq);
 	if (ret == 0)
 		bus->tx_seq = (bus->tx_seq + pktq->qlen) % SDPCM_SEQ_WRAP;
+
+done:
 	skb_queue_walk_safe(pktq, pkt_next, tmp) {
 		__skb_unlink(pkt_next, pktq);
-		brcmf_proto_bcdc_txcomplete(bus->sdiodev->dev, pkt_next,
-					    ret == 0);
+		if (*(u16 *)(pkt_next->cb) & ALIGN_SKB_FLAG)
+			brcmu_pkt_buf_free_skb(pkt_next);
+		else
+			brcmf_proto_bcdc_txcomplete(bus->sdiodev->dev, pkt_next,
+						    ret == 0);
 	}
 	return ret;
 }

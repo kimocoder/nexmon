@@ -172,12 +172,14 @@ brcmf_nvram_handle_value(struct nvram_parser *nvp)
 static enum nvram_parser_state
 brcmf_nvram_handle_comment(struct nvram_parser *nvp)
 {
-	char *eoc, *sol;
+	const char *eoc, *sol;
+	size_t remaining;
 
-	sol = (char *)&nvp->data[nvp->pos];
-	eoc = strchr(sol, '\n');
+	sol = (const char *)&nvp->data[nvp->pos];
+	remaining = nvp->data_len - nvp->pos;
+	eoc = strnchr(sol, remaining, '\n');
 	if (!eoc) {
-		eoc = strchr(sol, '\0');
+		eoc = memchr(sol, '\0', remaining);
 		if (!eoc)
 			return END;
 	}
@@ -236,9 +238,9 @@ static void brcmf_fw_strip_multi_v1(struct nvram_parser *nvp, u16 domain_nr,
 				    u16 bus_nr)
 {
 	/* Device path with a leading '=' key-value separator */
-	char pci_path[] = "=pci/?/?";
+	char pci_path[32];
 	size_t pci_len;
-	char pcie_path[] = "=pcie/?/?";
+	char pcie_path[32];
 	size_t pcie_len;
 
 	u32 i, j;
