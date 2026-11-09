@@ -1011,7 +1011,7 @@ class DeviceDetector:
             return None
 
         sha256 = hashlib.sha256(data).hexdigest()
-        is_nexmon = b"nexmon.org" in data or b"NEXMON" in data
+        is_nexmon = b"NEXMON" in data or b"nexmon" in data.lower()
 
         # Extract embedded version string if not from dmesg
         ver_str = fw_ver_dmesg
@@ -1296,7 +1296,7 @@ class FirmwareReverseEngineer:
                 time_str = m_time.group(1).decode("utf-8", errors="ignore")
 
         # Check if nexmon patched
-        is_nexmon = b"nexmon.org" in data or b"NEXMON" in data
+        is_nexmon = b"NEXMON" in data or b"nexmon" in data.lower()
         capabilities = []
         if is_nexmon:
             # Check known capabilities

@@ -218,5 +218,53 @@ class TestPhase4P2PortabilityAndTelemetry(unittest.TestCase):
         self.assertNotIn("fwrite(&a, sizeof(uint32_t)", text)
 
 
+class TestCodeQLSecurityFixes(unittest.TestCase):
+    """Verify CodeQL fixes for format strings, socket binds, TOCTOU, and permissions."""
+
+    def test_monitormode_format_string_has_function_arg(self):
+        src = ROOT / "patches/bcm43436b0/9_88_0_0/nexmon/src/monitormode.c"
+        text = src.read_text(errors="replace")
+        self.assertIn('printf("%s: udp tunneling not implemented\\n", __FUNCTION__);', text)
+
+    def test_console_format_args_cast_void_ptr(self):
+        for fw in ("18_41_8_9_sta", "18_38_18_sta"):
+            src = ROOT / f"patches/bcm4375b1/{fw}/nexmon/src/console.c"
+            text = src.read_text(errors="replace")
+            self.assertIn('(unsigned int)(uintptr_t) lr', text)
+
+    def test_csi_default_bind_localhost(self):
+        csi_py = ROOT / "python/pynexmon/csi.py"
+        text = csi_py.read_text(errors="replace")
+        self.assertIn('def __init__(self, host: str = "127.0.0.1"', text)
+        self.assertIn('host: str = "127.0.0.1",', text)
+
+    def test_mklist_regex_valid_class(self):
+        for path in ("buildtools/b43/fwcutter/mklist.py", "buildtools/b43-v3/fwcutter/mklist.py"):
+            text = (ROOT / path).read_text(errors="replace")
+            self.assertIn(r"d11([\s\w-]+)", text)
+
+    def test_android_manifest_exported_false(self):
+        manifest = ROOT / "app/app/src/main/AndroidManifest.xml"
+        text = manifest.read_text(errors="replace")
+        self.assertIn('android:exported="false"', text)
+
+    def test_countermeasures_loop_var_unsigned_int(self):
+        for path in ("app/app/src/main/external/src/libcountermeasures/src/attacks/mycountermeasures.c",
+                     "app/app/src/main/external/src/libcountermeasures/src/attacks/countermeasures.c"):
+            text = (ROOT / path).read_text(errors="replace")
+            self.assertIn("unsigned int i;", text)
+
+    def test_mkbootfs_fstat_after_open(self):
+        src = ROOT / "buildtools/mkboot/src/cpio/mkbootfs.c"
+        text = src.read_text(errors="replace")
+        self.assertIn('if(fstat(fd, &s)) die("could not fstat \'%s\'\\n", in);', text)
+
+    def test_codeql_config_ignores_third_party(self):
+        cfg = ROOT / ".github/codeql/codeql-config.yml"
+        self.assertTrue(cfg.is_file())
+        text = cfg.read_text(errors="replace")
+        self.assertIn("utilities/wireshark/**", text)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -467,7 +467,7 @@ class NetlinkCSIReceiver:
 class UDPCSIReceiver:
     """Real-time UDP receiver and listener for legacy Nexmon CSI frames (port 5500)."""
 
-    def __init__(self, host: str = "0.0.0.0", port: int = DEFAULT_CSI_PORT, buffer_size: int = 65535):
+    def __init__(self, host: str = "127.0.0.1", port: int = DEFAULT_CSI_PORT, buffer_size: int = 65535):
         self.host = host
         self.port = port
         self.buffer_size = buffer_size
@@ -538,7 +538,7 @@ class CSIReceiver:
     def __init__(
         self,
         mode: str = "auto",
-        host: str = "0.0.0.0",
+        host: str = "127.0.0.1",
         port: int = DEFAULT_CSI_PORT,
         buffer_size: int = 65535,
         family_name: str = NEXMON_CSI_GENL_NAME,

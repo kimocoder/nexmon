@@ -244,6 +244,7 @@ static void _archive(char *in, char *out, int ilen, int olen)
 
         fd = open(in, O_RDONLY);
         if(fd < 0) die("cannot open '%s' for read", in);
+        if(fstat(fd, &s)) die("could not fstat '%s'\n", in);
 
         tmp = (char*) malloc(s.st_size);
         if(tmp == 0) die("cannot allocate %d bytes", s.st_size);

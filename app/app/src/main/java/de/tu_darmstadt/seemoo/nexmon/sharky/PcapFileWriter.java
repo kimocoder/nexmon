@@ -22,6 +22,7 @@ import android.os.Environment;
 import android.util.Log;
 
 import java.io.DataOutputStream;
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -76,7 +77,13 @@ public class PcapFileWriter {
             this.filePath = this.filePath.concat("/");
 
         try {
-            outputStream = new DataOutputStream(new FileOutputStream(this.filePath + this.fileName));
+            File targetFile = new File(this.filePath, this.fileName);
+            String canonicalTarget = targetFile.getCanonicalPath();
+            String canonicalBase = new File(this.filePath).getCanonicalPath();
+            if (!canonicalTarget.startsWith(canonicalBase)) {
+                throw new SecurityException("Directory traversal path rejected: " + canonicalTarget);
+            }
+            outputStream = new DataOutputStream(new FileOutputStream(targetFile));
             //outputStream.write(PcapHeader.getBytes(Packet.PCAP_LINKTYPE_IEEE802_11));
             //outputStream.write(PcapHeader.getBytes(Packet.PCAP_LINKTYPE_RADIOTAP));
             outputStream.write(PcapHeader.getBytesWithoutLinktype());
@@ -159,7 +166,13 @@ public class PcapFileWriter {
 
     public boolean writePackets(ArrayList<Packet> packets) {
         try {
-            outputStream = new DataOutputStream(new FileOutputStream(filePath + fileName, true));
+            File targetFile = new File(this.filePath, this.fileName);
+            String canonicalTarget = targetFile.getCanonicalPath();
+            String canonicalBase = new File(this.filePath).getCanonicalPath();
+            if (!canonicalTarget.startsWith(canonicalBase)) {
+                throw new SecurityException("Directory traversal path rejected: " + canonicalTarget);
+            }
+            outputStream = new DataOutputStream(new FileOutputStream(targetFile, true));
 
             for (Packet packet : packets) {
                 handleFirstFrame(packet);

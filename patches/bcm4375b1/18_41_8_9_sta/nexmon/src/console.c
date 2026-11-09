@@ -100,21 +100,21 @@ vprintf(void *lr, void *sp, const char *fmt, va_list va)
         switch ((int) lr) {
             case 0x1855e7:
                 // at offset 17 uint32_t values of the sp, we find the pused link register
-                written = snprintf(line_buf, sizeof(line_buf) - 3 - written, "%03u.%03u %06x %06x ", time / 1000, time % 1000, lr, ((uint32_t *) sp)[17]);
+                written = snprintf(line_buf, sizeof(line_buf) - 3 - written, "%03u.%03u %06x %06x ", time / 1000, time % 1000, (unsigned int)(uintptr_t) lr, ((uint32_t *) sp)[17]);
                 break;
             case 0xd4e9:
                 // at offset 23 uint32_t values of the sp, we find the pused link register
-                written = snprintf(line_buf, sizeof(line_buf) - 3 - written, "%03u.%03u %06x %06x ", time / 1000, time % 1000, lr, ((uint32_t *) sp)[23]);
+                written = snprintf(line_buf, sizeof(line_buf) - 3 - written, "%03u.%03u %06x %06x ", time / 1000, time % 1000, (unsigned int)(uintptr_t) lr, ((uint32_t *) sp)[23]);
                 //hexdump("printf", sp, 50*4);
                 break;
             case 0x1854ad:
                 // at offset 23 uint32_t values of the sp, we find the pused link register
-                written = snprintf(line_buf, sizeof(line_buf) - 3 - written, "%03u.%03u %06x %06x ", time / 1000, time % 1000, lr, ((uint32_t *) sp)[15]);
+                written = snprintf(line_buf, sizeof(line_buf) - 3 - written, "%03u.%03u %06x %06x ", time / 1000, time % 1000, (unsigned int)(uintptr_t) lr, ((uint32_t *) sp)[15]);
                 //for (int i = 0; i < 50; i++)
                 //    printf("%02d %08x\n", i, ((uint32_t *) sp)[i]);
                 break;
             default:
-                written = snprintf(line_buf, sizeof(line_buf) - 3 - written, "%03u.%03u %06x ", time / 1000, time % 1000, lr);
+                written = snprintf(line_buf, sizeof(line_buf) - 3 - written, "%03u.%03u %06x ", time / 1000, time % 1000, (unsigned int)(uintptr_t) lr);
         }
         if (written >= 0 && written < sizeof(line_buf) - 3 - written)
             vsnprintf(line_buf + written, sizeof(line_buf) -3 - written, fmt, va);

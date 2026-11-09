@@ -21,6 +21,7 @@ package de.tu_darmstadt.seemoo.nexmon.sharky;
 import android.annotation.SuppressLint;
 import android.util.Log;
 
+import java.io.File;
 import java.io.FileInputStream;
 import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
@@ -87,7 +88,12 @@ public class PcapFileReader {
     private MappedByteBuffer getBuffer() {
         if (channel == null || !channel.isOpen()) {
             try {
-                channel = new FileInputStream(fileName).getChannel();
+                File file = new File(fileName);
+                String canonical = file.getCanonicalPath();
+                if (!file.exists() || !file.isFile()) {
+                    return null;
+                }
+                channel = new FileInputStream(canonical).getChannel();
                // buffer = channel.map(FileChannel.MapMode.READ_ONLY, PCAP_FILE_HEADER_LENGTH, channel.size() - PCAP_FILE_HEADER_LENGTH);
                 buffer = channel.map(FileChannel.MapMode.READ_ONLY, 0, channel.size());
 

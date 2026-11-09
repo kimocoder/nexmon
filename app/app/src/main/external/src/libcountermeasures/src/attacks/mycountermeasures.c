@@ -62,7 +62,7 @@ struct packet countermeasures_getpacket(void *options) {
   struct ieee_hdr *hdr;
   struct ether_addr src;
   static unsigned int nb_pkt = 0;
-  unsigned char i;
+  unsigned int i;
   long int r;
   uint8_t *p;
 
