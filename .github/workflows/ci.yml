@@ -225,7 +225,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 buildtools/scripts/validate_firmware.py \
-            --patch-dir patches/${{ matrix.dir }}/${{ matrix.subdir }}
+            --patch-dir patches/${{ matrix.dir }}/${{ matrix.subdir }} --require
 
       - name: Build Complete Firmware Image
         # Only targets with a committed ROM dump (matrix.complete set) can

@@ -3,6 +3,7 @@
 
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -27,6 +28,47 @@ class TestKernelDriverBuildAndIntegrity(unittest.TestCase):
                 error_details.append(f"{path.relative_to(ROOT)}: {'; '.join(errs)}")
             self.fail("Driver syntax errors detected:\n" + "\n".join(error_details))
         self.assertEqual(total_errors, 0)
+
+    def test_nested_driver_sources_are_checked_and_counted(self):
+        """Both directory and repository scans must include nested C and headers."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            driver = root / "brcmfmac_6.6.y-nexmon"
+            nested = driver / "include" / "nested"
+            nested.mkdir(parents=True)
+            good = driver / "core.c"
+            bad_header = nested / "broken.h"
+            bad_source = nested / "broken.c"
+            good.write_text("int value;\n")
+            bad_header.write_text("#ifdef UNCLOSED\n")
+            bad_source.write_text("/* unclosed comment\n")
+            (nested / "ignored.txt").write_text("/* ignored\n")
+            errors = check_drivers.check_driver_directory(driver)
+            self.assertEqual(set(errors), {bad_header, bad_source})
+            count, error_count, all_errors = check_drivers.check_all_drivers(root)
+            self.assertEqual(count, 3)
+            self.assertEqual(error_count, 2)
+            self.assertEqual(all_errors, errors)
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "buildtools/scripts/check_drivers.py"),
+                 "--check", "--driver-dir", str(driver)],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("Checking syntax for 3 files", result.stdout)
+            self.assertIn(str(bad_header), result.stdout)
+            self.assertIn(str(bad_source), result.stdout)
+
+    def test_legacy_ci_requires_firmware_artifacts(self):
+        """Legacy firmware CI must fail instead of silently skipping missing builds."""
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+        legacy = workflow.split("\n  legacy-firmware:", 1)[1]
+        legacy = re.split(r"\n  [A-Za-z0-9_-]+:", legacy, maxsplit=1)[0]
+        # Match the validation command with its shell continuation lines.
+        command = legacy.split("python3 buildtools/scripts/validate_firmware.py", 1)[1]
+        command = command.split("\n\n", 1)[0]
+        self.assertIn("--patch-dir patches/${{ matrix.dir }}/${{ matrix.subdir }}", command)
+        self.assertIn("--require", command)
 
     def test_broken_comment_regression_detected(self):
         """Regression test for core.c:739-741: stray */ outside comments must be caught immediately."""

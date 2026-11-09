@@ -117,7 +117,7 @@ def check_driver_directory(driver_dir: Path) -> dict[Path, list[str]]:
     """Scan all C and header files in driver_dir and return a mapping of path to errors."""
     file_errors: dict[Path, list[str]] = {}
     for ext in ("*.c", "*.h"):
-        for path in sorted(driver_dir.glob(ext)):
+        for path in sorted(driver_dir.rglob(ext)):
             errs = validate_driver_file(path)
             if errs:
                 file_errors[path] = errs
@@ -133,7 +133,7 @@ def check_all_drivers(root_dir: Path = DRIVER_ROOT) -> tuple[int, int, dict[Path
 
     for d in driver_dirs:
         for ext in ("*.c", "*.h"):
-            files = list(d.glob(ext))
+            files = list(d.rglob(ext))
             total_files += len(files)
             for f in files:
                 errs = validate_driver_file(f)
@@ -260,7 +260,7 @@ def main() -> int:
 
     # 1. Syntax & structure check
     if args.driver_dir:
-        files = list(args.driver_dir.glob("*.c")) + list(args.driver_dir.glob("*.h"))
+        files = list(args.driver_dir.rglob("*.c")) + list(args.driver_dir.rglob("*.h"))
         print(f"Checking syntax for {len(files)} files in {args.driver_dir}...")
         errors = check_driver_directory(args.driver_dir)
         total_errors = sum(len(e) for e in errors.values())
