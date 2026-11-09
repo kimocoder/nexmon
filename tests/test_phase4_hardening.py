@@ -47,7 +47,7 @@ class TestPhase4ToolchainScripts(unittest.TestCase):
         script = ROOT / "buildtools/scripts/getdefine.sh"
         self.assertTrue(script.exists())
         # Run with CC="arm-none-eabi-"
-        env = dict(os.environ, CC="arm-none-eabi-")
+        env = dict(os.environ, CC="arm-none-eabi-", NEXMON_ROOT=str(ROOT))
         res = subprocess.run(
             ["bash", str(script), "CHIP_VER_BCM4339"],
             cwd=str(ROOT),
@@ -60,7 +60,7 @@ class TestPhase4ToolchainScripts(unittest.TestCase):
 
     def test_getdefine_with_standard_cc(self):
         script = ROOT / "buildtools/scripts/getdefine.sh"
-        env = dict(os.environ, CC="gcc")
+        env = dict(os.environ, CC="gcc", NEXMON_ROOT=str(ROOT))
         res = subprocess.run(
             ["bash", str(script), "CHIP_VER_BCM4339"],
             cwd=str(ROOT),

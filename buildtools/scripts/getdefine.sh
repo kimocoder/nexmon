@@ -1,6 +1,14 @@
 #!/bin/bash
 set -euo pipefail
-if [ -z "${NEXMON_ROOT:-}" ]; then echo "getdefine.sh: NEXMON_ROOT not set" >&2; exit 1; fi
+if [ -z "${NEXMON_ROOT:-}" ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+    if [ -f "$SCRIPT_DIR/../../setup_env.sh" ]; then
+        NEXMON_ROOT="$(cd "$SCRIPT_DIR/../.." >/dev/null 2>&1 && pwd)"
+    else
+        echo "getdefine.sh: NEXMON_ROOT not set" >&2
+        exit 1
+    fi
+fi
 if [ -z "${1:-}" ]; then echo "getdefine.sh: missing define name" >&2; exit 1; fi
 # Cache gcc -E per (NEXMON_ROOT, define) to avoid forking gcc for every AT
 CACHE_DIR="${TMPDIR:-/tmp}/nexmon-getdefine-$(id -u 2>/dev/null || echo 0)"
