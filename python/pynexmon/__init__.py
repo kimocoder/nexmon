@@ -47,6 +47,14 @@ from .nexmon import (
     NexmonValueError,
 )
 from .csi import CSIPacket, CSIReceiver, parse_csi_payload
+from .pcapng import (
+    CSIPcapNGWriter,
+    CSIPcapWriter,
+    build_radiotap_header,
+    csi_packet_to_radiotap_frame,
+    export_csi_to_pcap,
+    export_csi_to_pcapng,
+)
 
 __all__ = [
     "NexmonDevice",
@@ -92,5 +100,11 @@ __all__ = [
     "CSIPacket",
     "CSIReceiver",
     "parse_csi_payload",
+    "CSIPcapNGWriter",
+    "CSIPcapWriter",
+    "export_csi_to_pcapng",
+    "export_csi_to_pcap",
+    "csi_packet_to_radiotap_frame",
+    "build_radiotap_header",
 ]
-__version__ = "1.1.0"
+__version__ = "1.2.0"

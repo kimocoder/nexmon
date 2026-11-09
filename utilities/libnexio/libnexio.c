@@ -32,6 +32,10 @@
  *                                                                         *
  **************************************************************************/
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -286,7 +290,22 @@ __nex_driver_netlink(struct nexio *nexio, struct nex_ioctl *ioc)
                 return -1;
         }
 
+#if defined(__linux__) && defined(_GNU_SOURCE)
+        struct mmsghdr msgvec[1];
+        struct iovec iov;
+        memset(&msgvec, 0, sizeof(msgvec));
+        iov.iov_base = nlh;
+        iov.iov_len = NLMSG_SPACE(frame_len);
+        msgvec[0].msg_hdr.msg_iov = &iov;
+        msgvec[0].msg_hdr.msg_iovlen = 1;
+        int nmsgs = recvmmsg(nexio->sock_rx_ioctl, msgvec, 1, 0, NULL);
+        if (nmsgs > 0)
+                rx_frame_len = (int) msgvec[0].msg_len;
+        else
+                rx_frame_len = -1;
+#else
         rx_frame_len = recv(nexio->sock_rx_ioctl, nlh, NLMSG_SPACE(frame_len), 0);
+#endif
 
         if (rx_frame_len < 0) {
                 if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -571,6 +590,88 @@ nex_ioctl_nonblock(struct nexio *nexio, int cmd, void *buf, int len)
         }
     }
     return -1;
+}
+
+int
+nex_recv_batch(struct nexio *nexio, void **bufs, int *lens, int max_msgs, int timeout_ms)
+{
+    if (!nexio || !bufs || !lens || max_msgs <= 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    int fd = -1;
+    if (nexio->type == NEXIO_TYPE_NETLINK || nexio->type == NEXIO_TYPE_UDP) {
+        fd = nexio->sock_rx_ioctl;
+    } else {
+        errno = ENOTSUP;
+        return -1;
+    }
+
+    if (fd < 0) {
+        errno = EBADF;
+        return -1;
+    }
+
+    if (max_msgs > 64)
+        max_msgs = 64;
+
+#if defined(__linux__) && defined(_GNU_SOURCE)
+    struct mmsghdr msgvec[64];
+    struct iovec iov[64];
+    memset(msgvec, 0, sizeof(struct mmsghdr) * max_msgs);
+
+    for (int i = 0; i < max_msgs; i++) {
+        if (!bufs[i] || lens[i] <= 0) {
+            errno = EINVAL;
+            return -1;
+        }
+        iov[i].iov_base = bufs[i];
+        iov[i].iov_len = lens[i];
+        msgvec[i].msg_hdr.msg_iov = &iov[i];
+        msgvec[i].msg_hdr.msg_iovlen = 1;
+    }
+
+    int flags = 0;
+    if (timeout_ms == 0) {
+        flags |= MSG_DONTWAIT;
+    }
+
+    struct timespec ts;
+    struct timespec *pts = NULL;
+    if (timeout_ms > 0) {
+        ts.tv_sec = timeout_ms / 1000;
+        ts.tv_nsec = (long)(timeout_ms % 1000) * 1000000L;
+        pts = &ts;
+    }
+
+    int n = recvmmsg(fd, msgvec, (unsigned int)max_msgs, flags, pts);
+    if (n < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK)
+            return 0;
+        return -1;
+    }
+
+    for (int i = 0; i < n; i++) {
+        lens[i] = (int)msgvec[i].msg_len;
+    }
+    return n;
+#else
+    int count = 0;
+    for (int i = 0; i < max_msgs; i++) {
+        int r = recv(fd, bufs[i], lens[i], (timeout_ms == 0) ? MSG_DONTWAIT : 0);
+        if (r < 0) {
+            if (count > 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+                break;
+            if (count == 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+                return 0;
+            return -1;
+        }
+        lens[i] = r;
+        count++;
+    }
+    return count;
+#endif
 }
 
 /* Release everything a nex_init_* constructor allocated: sockets, the ifreq,

@@ -180,6 +180,16 @@ class CSIPacket:
         """Serialize packet to JSON string."""
         return json.dumps(self.to_dict(include_iq=True), indent=indent)
 
+    def to_radiotap_frame(self, dst_mac: str = "ff:ff:ff:ff:ff:ff") -> bytes:
+        """Convert this CSI packet into a standard IEEE 802.11 Radiotap capture frame.
+
+        Encapsulates the raw CSI payload into an 802.11 QoS Data frame preceded by
+        a standard 24-byte Radiotap header with hardware timestamp and channel metadata.
+        """
+        from .pcapng import csi_packet_to_radiotap_frame
+
+        return csi_packet_to_radiotap_frame(self, dst_mac=dst_mac)
+
     def __repr__(self) -> str:
         return (
             f"<CSIPacket src={self.src_mac} seq={self.seq} core={self.core} "
@@ -633,10 +643,24 @@ def main():
     parser.add_argument("--count", "-c", type=int, default=0, help="Number of packets to capture (0 = infinite)")
     parser.add_argument("--json", action="store_true", help="Output stream as newline-delimited JSON")
     parser.add_argument("--quiet", "-q", action="store_true", help="Quiet output (show only packet count and rate)")
+    parser.add_argument("--pcapng", "-w", type=str, default=None, help="Save captured frames to a PCAP-NG file")
+    parser.add_argument("--pcap", type=str, default=None, help="Save captured frames to a classic PCAP file")
     args = parser.parse_args()
 
     mode = "netlink" if args.netlink else args.mode
     receiver = CSIReceiver(mode=mode, port=args.port)
+
+    pcapng_writer = None
+    pcap_writer = None
+    if args.pcapng:
+        from .pcapng import CSIPcapNGWriter
+
+        pcapng_writer = CSIPcapNGWriter(args.pcapng)
+    if args.pcap:
+        from .pcapng import CSIPcapWriter
+
+        pcap_writer = CSIPcapWriter(args.pcap)
+
     with receiver:
         print(f"Listening for Nexmon CSI frames via [{receiver.backend.upper()}] backend...")
         count = 0
@@ -644,6 +668,10 @@ def main():
         try:
             for pkt in receiver.stream(max_packets=args.count if args.count > 0 else None, timeout=None if args.count == 0 else 5.0):
                 count += 1
+                if pcapng_writer is not None:
+                    pcapng_writer.write_packet(pkt)
+                if pcap_writer is not None:
+                    pcap_writer.write_packet(pkt)
                 if args.json:
                     print(pkt.to_json())
                 elif not args.quiet:
@@ -656,9 +684,18 @@ def main():
                     )
         except KeyboardInterrupt:
             pass
+        finally:
+            if pcapng_writer is not None:
+                pcapng_writer.close()
+            if pcap_writer is not None:
+                pcap_writer.close()
 
         dur = max(time.time() - t0, 0.001)
         print(f"\nCaptured {count} CSI frames in {dur:.2f}s ({count / dur:.2f} frames/sec)")
+        if pcapng_writer is not None:
+            print(f"Saved {pcapng_writer.packet_count} frames to PCAP-NG: {args.pcapng}")
+        if pcap_writer is not None:
+            print(f"Saved {pcap_writer.packet_count} frames to PCAP: {args.pcap}")
 
 
 if __name__ == "__main__":

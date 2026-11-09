@@ -48,6 +48,15 @@ class TestLibnexioSource(unittest.TestCase):
         self.assertIn("getsockname", text)
         self.assertIn("len > 0 && buf == NULL", text)
 
+    def test_nex_recv_batch_source(self):
+        hdr = (ROOT / "utilities/libnexio/libnexio.h").read_text()
+        src = (ROOT / "utilities/libnexio/libnexio.c").read_text()
+        self.assertIn("nex_recv_batch", hdr)
+        self.assertIn("nex_recv_batch", src)
+        self.assertIn("recvmmsg", src)
+        self.assertIn("msgvec", src)
+        self.assertIn("max_msgs > 64", src)
+
     def test_h08_runtime_null_buf_and_multi_handle(self):
         if not shutil.which("gcc"):
             self.skipTest("gcc not found")
@@ -76,6 +85,18 @@ class TestLibnexioSource(unittest.TestCase):
             lib.nex_free.argtypes = [ctypes.c_void_p]
             lib.nex_free.restype = None
 
+            if hasattr(lib, "nex_recv_batch"):
+                lib.nex_recv_batch.argtypes = [
+                    ctypes.c_void_p,
+                    ctypes.POINTER(ctypes.c_void_p),
+                    ctypes.POINTER(ctypes.c_int),
+                    ctypes.c_int,
+                    ctypes.c_int,
+                ]
+                lib.nex_recv_batch.restype = ctypes.c_int
+                # NULL handle must return -1
+                self.assertEqual(lib.nex_recv_batch(None, None, None, 1, 0), -1)
+
             h1 = lib.nex_init_ioctl(b"wlan0")
             h2 = lib.nex_init_ioctl(b"wlan0")
             self.assertIsNotNone(h1)
@@ -83,6 +104,11 @@ class TestLibnexioSource(unittest.TestCase):
             # len > 0 with NULL buf must be rejected cleanly with -1
             self.assertEqual(lib.nex_ioctl(h1, 107, None, 4, False), -1)
             self.assertEqual(lib.nex_ioctl(h1, 107, None, -1, False), -1)
+
+            # nex_recv_batch with invalid params or closed socket must return -1
+            if hasattr(lib, "nex_recv_batch"):
+                self.assertEqual(lib.nex_recv_batch(h1, None, None, -1, 0), -1)
+
             lib.nex_free(h1)
             lib.nex_free(h2)
 
@@ -94,7 +120,12 @@ class TestLibnexioBuild(unittest.TestCase):
         if not lib.is_file():
             if not shutil.which("make"):
                 self.skipTest("make not found")
-            result = subprocess.run(["make", "-C", str(ROOT / "utilities/libnexio")], capture_output=True, text=True, timeout=30)
+            result = subprocess.run(
+                ["make", "-C", str(ROOT / "utilities/libnexio"), "CC=gcc", "NATIVE_BUILD=1"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
             if result.returncode != 0:
                 self.skipTest(f"libnexio build failed: {result.stderr[:500]}")
         self.assertTrue((ROOT / "utilities/libnexio/libnexio.a").is_file() or (ROOT / "utilities/libnexio/libnexio.so").is_file())
@@ -107,8 +138,10 @@ class TestLibnexioBuild(unittest.TestCase):
             self.skipTest("sanitizer not available")
         # Try building libnexio with sanitizer target
         result = subprocess.run(
-            ["make", "-C", str(ROOT / "utilities/libnexio"), "sanitize"],
-            capture_output=True, text=True, timeout=30
+            ["make", "-C", str(ROOT / "utilities/libnexio"), "sanitize", "CC=gcc"],
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         # Allow failure due to missing deps, but not due to sanitizer errors in our code
         if result.returncode != 0 and "sanitizer" in result.stderr.lower():
@@ -139,6 +172,7 @@ class TestLibnexioNetlinkUDP(unittest.TestCase):
             from pynexmon import nexmon
             # Check that nexmon has expected classes
             self.assertTrue(hasattr(nexmon, 'NexmonDevice') or hasattr(nexmon, 'Chanspec'))
+            self.assertTrue(hasattr(nexmon.NexmonDevice, 'recv_batch'))
         except ImportError as e:
             self.skipTest(f"pynexmon not available: {e}")
 

@@ -38,6 +38,15 @@ extern "C" {
 int nex_ioctl(struct nexio *nexio, int cmd, void *buf, int len, bool set);
 int nex_ioctl_nonblock(struct nexio *nexio, int cmd, void *buf, int len);
 
+/* High-throughput batched message reception (recvmmsg).
+ * Receives up to max_msgs into caller-allocated buffers.
+ * bufs: array of pointers to message buffers.
+ * lens: array of buffer lengths on input; updated to received byte counts on output.
+ * max_msgs: maximum number of messages to receive (typically 1..64).
+ * timeout_ms: timeout in milliseconds (-1 for blocking, 0 for non-blocking).
+ * Returns the number of messages successfully received (>= 0), or -1 on error. */
+int nex_recv_batch(struct nexio *nexio, void **bufs, int *lens, int max_msgs, int timeout_ms);
+
 /* Direct D11 SHM / register memory-mapped access primitives (Kernel 7.4 commit f6e39ae4ea84) */
 int nex_read_d11_shm(struct nexio *nexio, unsigned int offset, unsigned int *val);
 int nex_write_d11_shm(struct nexio *nexio, unsigned int offset, unsigned int val);
