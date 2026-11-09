@@ -1007,9 +1007,11 @@ main(int argc, char **argv)
         unsigned int *custom_cmd_buf_pos = (unsigned int *) custom_cmd_buf;
 
         int i = 0;
-        for (i = 0; i < custom_cmd_buf_len / 0x2000; i++) {
+        for (i = 0; i < (int)(custom_cmd_buf_len / 0x2000); i++) {
             *custom_cmd_buf_pos = dump_objmem_addr + i * 0x2000 / 4;
-            printf("%8p %08x\n", custom_cmd_buf_pos, *custom_cmd_buf_pos);
+            if (!raw_output) {
+                printf("%p %08x\n", (void *) custom_cmd_buf_pos, *custom_cmd_buf_pos);
+            }
             ret = nex_ioctl(nexio, 406, custom_cmd_buf_pos, 0x2000, false);
             if (ret < 0) {
                 fprintf(stderr, "ERR: dump_objmem ioctl failed\n");
@@ -1030,11 +1032,13 @@ main(int argc, char **argv)
             }
         }
 
-        if (raw_output) {
-            fwrite(custom_cmd_buf, sizeof(char), custom_cmd_buf_len, stdout);
-            fflush(stdout);
-        } else {
-            hexdump(custom_cmd_buf, custom_cmd_buf_len);
+        if (failed == 0) {
+            if (raw_output) {
+                fwrite(custom_cmd_buf, sizeof(char), custom_cmd_buf_len, stdout);
+                fflush(stdout);
+            } else {
+                hexdump(custom_cmd_buf, custom_cmd_buf_len);
+            }
         }
 
         free(custom_cmd_buf);

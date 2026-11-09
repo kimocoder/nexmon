@@ -544,6 +544,27 @@ class TestPhase3DriverPortabilityAndHardening(unittest.TestCase):
         self.assertNotIn("memcpy(ifp->ndev->dev_addr, ifp->mac_addr, ETH_ALEN);", core_c)
         self.assertNotIn("memcpy(ndev->dev_addr, ifp->mac_addr, ETH_ALEN);", core_c)
 
+    def test_pkthead_coverage_for_pointer_head_chips(self):
+        """helper.c pkthead() must include all chips whose sk_buff defines pointer head."""
+        helper_c = (ROOT / "patches/common/helper.c").read_text()
+        required_chips = [
+            "CHIP_VER_BCM43430a1",
+            "CHIP_VER_BCM43436b0",
+            "CHIP_VER_BCM43438",
+            "CHIP_VER_BCM4366c0",
+            "CHIP_VER_BCM43684b0",
+            "CHIP_VER_BCM43684c0",
+        ]
+        for chip in required_chips:
+            self.assertIn(chip, helper_c, f"helper.c pkthead() missing {chip}")
+
+    def test_nexutil_dump_objmem_failure_guards(self):
+        """nexutil.c dump_objmem must guard stdout writes against failed IOCTLs."""
+        nexutil_c = (ROOT / "utilities/nexutil/nexutil.c").read_text()
+        self.assertIn("if (failed == 0) {", nexutil_c)
+        self.assertIn("if (!raw_output) {", nexutil_c)
+        self.assertNotIn('printf("%8p %08x\\n"', nexutil_c)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
