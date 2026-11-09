@@ -1141,7 +1141,7 @@ class FirmwareReverseEngineer:
                         rom_size = entry.get("default_romsize", rom_size)
                         break
 
-        data = path.read_bytes()
+        data = read_firmware_blob(path)
         fsize = len(data)
         sha256 = hashlib.sha256(data).hexdigest()
 
@@ -1319,7 +1319,7 @@ class FirmwareReverseEngineer:
     @classmethod
     def disassemble_range(cls, file_path: str, start_addr: int, count_bytes: int = 64,
                           ram_start: int = 0x198000, thumb: bool = True) -> List[str]:
-        data = Path(file_path).read_bytes()
+        data = read_firmware_blob(file_path)
         offset = start_addr - ram_start
         if offset < 0 or offset >= len(data):
             return [f"Address 0x{start_addr:x} is outside RAM [0x{ram_start:x}-0x{ram_start+len(data):x}]"]
@@ -1463,7 +1463,7 @@ class FirmwareReverseEngineer:
         if not rep.ucode_start or not rep.ucode_size:
             return False, "Could not determine ucode offset / size in firmware"
 
-        data = Path(file_path).read_bytes()
+        data = read_firmware_blob(file_path)
         actual_ram_start = rep.ram_start if getattr(rep, "ram_start", 0) else ram_start
         offset = rep.ucode_start - actual_ram_start
         if offset < 0 or offset + rep.ucode_size > len(data):
@@ -1732,7 +1732,7 @@ class FirmwareManager:
             except OSError:
                 continue
             try:
-                data = path.read_bytes()
+                data = read_firmware_blob(path)
             except OSError:
                 continue
             if len(data) < 100000:

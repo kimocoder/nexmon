@@ -104,6 +104,8 @@ def validate_driver_file(path: Path) -> list[str]:
 
     if in_block_comment:
         errors.append(f"Line {len(lines)}: Unclosed block comment '/*' reaching end of file")
+    if in_string:
+        errors.append(f"Line {len(lines)}: Unterminated string literal {in_string} reaching end of file")
     if if_stack:
         start_idx, cmd = if_stack[-1]
         errors.append(f"Line {start_idx}: Unclosed #{cmd} reaching end of file")

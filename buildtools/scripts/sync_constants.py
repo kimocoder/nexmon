@@ -126,7 +126,7 @@ def replace_or_insert_block(text: str, begin_marker: str, end_marker: str, new_b
         re.DOTALL,
     )
     if pattern.search(text):
-        return pattern.sub(new_block.strip(), text)
+        return pattern.sub(lambda _: new_block.strip(), text)
     return text
 
 

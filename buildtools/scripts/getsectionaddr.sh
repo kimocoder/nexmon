@@ -1,11 +1,23 @@
 #!/bin/bash
 set -euo pipefail
 if [ $# -ne 2 ]; then echo "getsectionaddr.sh: usage: $0 <section> <elf>" >&2; exit 1; fi
-# Use CC's objdump if CC ends in gcc, else fallback to host objdump
-if [ -n "${CC:-}" ] && [ "$CC" != "${CC%gcc}" ]; then
-    OBJDUMP="${CC%gcc}objdump"
-else
-    OBJDUMP="objdump"
+# Resolve objdump matching CC prefix or fallback to host/arm-none-eabi objdump
+OBJDUMP="objdump"
+if [ -n "${CC:-}" ]; then
+    if [ "$CC" != "${CC%gcc}" ]; then
+        CANDIDATE="${CC%gcc}objdump"
+    elif [ "$CC" != "${CC%-}" ]; then
+        CANDIDATE="${CC}objdump"
+    else
+        CANDIDATE="${CC}-objdump"
+    fi
+    if command -v "$CANDIDATE" >/dev/null 2>&1; then
+        OBJDUMP="$CANDIDATE"
+    elif command -v "arm-none-eabi-objdump" >/dev/null 2>&1; then
+        OBJDUMP="arm-none-eabi-objdump"
+    fi
+elif command -v "arm-none-eabi-objdump" >/dev/null 2>&1; then
+    OBJDUMP="arm-none-eabi-objdump"
 fi
 if ! command -v "$OBJDUMP" >/dev/null 2>&1; then
     OBJDUMP="objdump"

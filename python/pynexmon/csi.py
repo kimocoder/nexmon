@@ -8,6 +8,7 @@ and real-time socket/Netlink receivers.
 """
 
 import cmath
+from collections import deque
 import json
 import os
 import socket
@@ -320,6 +321,7 @@ class NetlinkCSIReceiver:
         self._sock: Optional[socket.socket] = None
         self._family_id: Optional[int] = None
         self._mcast_group_id: Optional[int] = None
+        self._pending_packets: deque[CSIPacket] = deque()
 
     def start(self):
         """Resolve family, bind Generic Netlink socket, and subscribe to multicast group."""
@@ -370,6 +372,9 @@ class NetlinkCSIReceiver:
 
     def recv(self, timeout: Optional[float] = 1.0) -> Optional[CSIPacket]:
         """Receive a single CSI packet from the Netlink multicast ring buffer."""
+        if self._pending_packets:
+            return self._pending_packets.popleft()
+
         if self._sock is None:
             self.start()
         assert self._sock is not None
@@ -428,10 +433,12 @@ class NetlinkCSIReceiver:
                     pkt = parse_csi_payload(raw_payload, timestamp=ts)
                     pkt.tsft_us = tsft_us
                     pkt.ifindex = ifindex
-                    return pkt
+                    self._pending_packets.append(pkt)
                 except ValueError:
-                    return None
+                    pass
 
+        if self._pending_packets:
+            return self._pending_packets.popleft()
         return None
 
     def stream(self, max_packets: Optional[int] = None, timeout: Optional[float] = 2.0) -> Iterator[CSIPacket]:

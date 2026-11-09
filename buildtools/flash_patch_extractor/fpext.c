@@ -260,6 +260,9 @@ analyse_ram(void)
 				memcpy(&rom_array[fpc[i].target_addr - rom_start],
 				       &ram_array[fpc[i].data_ptr - ram_start],
 				       (size_t)fpc[i].size);
+			} else {
+				fprintf(stderr, "WARN: Flash patch %zu target_addr 0x%08x (size %u) out of ROM bounds (0x%08x - 0x%08zx).\n",
+					i, fpc[i].target_addr, fpc[i].size, rom_start, rom_start + rom_len);
 			}
 		}
 	}
@@ -305,6 +308,9 @@ analyse_ram_bcm43596(void)
 			if (rom_range_valid(fpc[i].target_addr, 8)) {
 				memcpy(&rom_array[fpc[i].target_addr - rom_start],
 				       &ram_array[off], 8);
+			} else {
+				fprintf(stderr, "WARN: Flash patch %zu target_addr 0x%08x (size 8) out of ROM bounds (0x%08x - 0x%08zx).\n",
+					i, fpc[i].target_addr, rom_start, rom_start + rom_len);
 			}
 		}
 	}
@@ -347,6 +353,9 @@ analyse_ram_bcm4366(void)
 			if (rom_range_valid(fpc[i].target_addr, 16)) {
 				memcpy(&rom_array[fpc[i].target_addr - rom_start],
 				       &ram_array[off], 16);
+			} else {
+				fprintf(stderr, "WARN: Flash patch %zu target_addr 0x%08x (size 16) out of ROM bounds (0x%08x - 0x%08zx).\n",
+					i, fpc[i].target_addr, rom_start, rom_start + rom_len);
 			}
 		}
 	}

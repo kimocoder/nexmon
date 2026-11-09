@@ -1882,6 +1882,21 @@ recalculate_addresses:
 				addr = get_labeladdress(ctx, c, c->operands[i].u.label);
 				if (addr < 0)
 					goto does_not_exist;
+				if (i == 2) {
+					/* Validate jump target address width */
+					unsigned int max_addr;
+					if (ctx->arch == ARCH5)
+						max_addr = (1U << 12);
+					else if (ctx->arch < ARCH129)
+						max_addr = (1U << 13);
+					else if (ctx->arch < ARCH134)
+						max_addr = (1U << 14);
+					else
+						max_addr = (1U << 15);
+					if ((unsigned int)addr >= max_addr)
+						asm_error(ctx, "Jump target address 0x%x exceeds maximum bitfield range (max 0x%x)",
+							  addr, max_addr - 1);
+				}
 				c->operands[i].u.operand = addr;
 				if (i != 2) {
 					/* Is not a jump target.
@@ -1986,33 +2001,33 @@ static void emit_code(struct assembler_context *ctx)
 
 			if (ctx->arch == ARCH5) {
 				code = 0;
-				code |= ((uint64_t)c->operands[2].u.operand);
-				code |= ((uint64_t)c->operands[1].u.operand) << 12;
-				code |= ((uint64_t)c->operands[0].u.operand) << 24;
+				code |= ((uint64_t)c->operands[2].u.operand & 0xFFFULL);
+				code |= ((uint64_t)c->operands[1].u.operand & 0xFFFULL) << 12;
+				code |= ((uint64_t)c->operands[0].u.operand & 0xFFFULL) << 24;
 				code |= ((uint64_t)c->opcode) << 36;
 			} else if (ctx->arch < ARCH129) {
 				code = 0;
-				code |= ((uint64_t)c->operands[2].u.operand);
-				code |= ((uint64_t)c->operands[1].u.operand) << 13;
-				code |= ((uint64_t)c->operands[0].u.operand) << 26;
+				code |= ((uint64_t)c->operands[2].u.operand & 0x1FFFULL);
+				code |= ((uint64_t)c->operands[1].u.operand & 0x1FFFULL) << 13;
+				code |= ((uint64_t)c->operands[0].u.operand & 0x1FFFULL) << 26;
 				code |= ((uint64_t)c->opcode) << 39;
 			} else if (ctx->arch < ARCH134) {
 				if (c->weird != 0)
 					code = 0x0020000000000000;
 				else
 					code = 0;
-				code |= ((uint64_t)c->operands[2].u.operand);
-				code |= ((uint64_t)c->operands[1].u.operand) << 14;
-				code |= ((uint64_t)c->operands[0].u.operand) << 28;
+				code |= ((uint64_t)c->operands[2].u.operand & 0x3FFFULL);
+				code |= ((uint64_t)c->operands[1].u.operand & 0x3FFFULL) << 14;
+				code |= ((uint64_t)c->operands[0].u.operand & 0x3FFFULL) << 28;
 				code |= ((uint64_t)c->opcode) << 42;
 			} else {
 				if (c->weird != 0)
 					code = 0x0100000000000000;
 				else
 					code = 0;
-				code |= ((uint64_t)c->operands[2].u.operand);
-				code |= ((uint64_t)c->operands[1].u.operand) << 15;
-				code |= ((uint64_t)c->operands[0].u.operand) << 30;
+				code |= ((uint64_t)c->operands[2].u.operand & 0x7FFFULL);
+				code |= ((uint64_t)c->operands[1].u.operand & 0x7FFFULL) << 15;
+				code |= ((uint64_t)c->operands[0].u.operand & 0x7FFFULL) << 30;
 				code |= ((uint64_t)c->opcode) << 45;
 			}
 

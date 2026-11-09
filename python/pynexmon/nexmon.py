@@ -1,4 +1,5 @@
 """Native Python SDK for Broadcom Nexmon Wi-Fi firmware and drivers."""
+import contextlib
 import ctypes
 import os
 from pathlib import Path
@@ -233,6 +234,10 @@ class NexmonDevice:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
+
+    def __del__(self):
+        with contextlib.suppress(Exception):
+            self.close()
 
     def ioctl(self, cmd: int, data: Union[bytes, bytearray, int] = 0, length: int = 4, set_cmd: bool = False) -> bytearray:
         """Execute a raw IOCTL command to firmware."""

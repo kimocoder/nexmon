@@ -262,8 +262,9 @@ do_status() {
     ip -br link show "$STA" 2>/dev/null || warn "$STA absent"
     ip -br link show "$MON" 2>/dev/null || echo "$MON: not present"
 
+    flags=$(cat "/sys/class/net/$STA/flags" 2>/dev/null || echo 0)
     if ip link show "$MON" >/dev/null 2>&1 && [ -e "/sys/class/net/$STA/flags" ] \
-       && [ $(( $(cat "/sys/class/net/$STA/flags") & 1 )) -eq 1 ]; then
+       && [ $(( ${flags:-0} & 1 )) -eq 1 ]; then
         warn "$STA is admin-up while $MON exists - cfg80211 will block channel hops (-EBUSY)."
         warn "  fix: ip link set $STA down"
     fi

@@ -1354,6 +1354,13 @@ recalculate_addresses:
 				addr = get_labeladdress(ctx, c, c->operands[i].u.label);
 				if (addr < 0)
 					goto does_not_exist;
+				if (i == 2) {
+					/* Validate jump target address width */
+					unsigned int max_addr = (ctx->arch == 5) ? (1U << 12) : (1U << 13);
+					if ((unsigned int)addr >= max_addr)
+						asm_error(ctx, "Jump target address 0x%x exceeds maximum bitfield range (max 0x%x)",
+							  addr, max_addr - 1);
+				}
 				c->operands[i].u.operand = addr;
 				if (i != 2) {
 					/* Is not a jump target.
@@ -1453,16 +1460,16 @@ static void emit_code(struct assembler_context *ctx)
 			switch (ctx->arch) {
 			case 5:
 				code = 0;
-				code |= ((uint64_t)c->operands[2].u.operand);
-				code |= ((uint64_t)c->operands[1].u.operand) << 12;
-				code |= ((uint64_t)c->operands[0].u.operand) << 24;
+				code |= ((uint64_t)c->operands[2].u.operand & 0xFFFULL);
+				code |= ((uint64_t)c->operands[1].u.operand & 0xFFFULL) << 12;
+				code |= ((uint64_t)c->operands[0].u.operand & 0xFFFULL) << 24;
 				code |= ((uint64_t)c->opcode) << 36;
 				break;
 			case 15:
 				code = 0;
-				code |= ((uint64_t)c->operands[2].u.operand);
-				code |= ((uint64_t)c->operands[1].u.operand) << 13;
-				code |= ((uint64_t)c->operands[0].u.operand) << 26;
+				code |= ((uint64_t)c->operands[2].u.operand & 0x1FFFULL);
+				code |= ((uint64_t)c->operands[1].u.operand & 0x1FFFULL) << 13;
+				code |= ((uint64_t)c->operands[0].u.operand & 0x1FFFULL) << 26;
 				code |= ((uint64_t)c->opcode) << 39;
 				break;
 			default:
