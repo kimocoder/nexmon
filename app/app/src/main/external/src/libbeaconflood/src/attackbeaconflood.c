@@ -81,12 +81,17 @@ int attack_beacon_flood(JNIEnv* pEnv, jobject pThis, jmethodID pMid, jmethodID p
   i = 2;
   
   cur_options = cur_attack->parse_options();
-  if (!cur_options) return 1;
+  if (!cur_options) {
+    cleanup_info_message(pEnv);
+    return 1;
+  }
 
   srandom(time(NULL));	//Fresh numbers each run
   
   //Parsing done, start attacks
   main_loop(cur_attack, cur_options);
-  
+
+  cleanup_info_message(pEnv);
+
   return 0;
 }

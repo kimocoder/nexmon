@@ -79,6 +79,7 @@ int attack_countermeasures(JNIEnv* pEnv, jobject pThis, jmethodID pMid, jmethodI
     printf("Starting OSDEP on %s failed\n", interface_name);
     snprintf(info_buffer, sizeof(info_buffer), "Starting OSDEP on %s failed\n", interface_name);
     info_message(info_buffer, UPDATE_ERROR);
+    cleanup_info_message(pEnv);
     return 2;
   }
   
@@ -87,12 +88,17 @@ int attack_countermeasures(JNIEnv* pEnv, jobject pThis, jmethodID pMid, jmethodI
 
 
   cur_options = cur_attack->parse_options(ap_mac, burst_pause, packets_per_burst, speed, use_qos_exploit);
-  if (!cur_options) return 1;
+  if (!cur_options) {
+    cleanup_info_message(pEnv);
+    return 1;
+  }
 
   srandom(time(NULL));	//Fresh numbers each run
   
   //Parsing done, start attacks
   main_loop(cur_attack, cur_options);
-  
+
+  cleanup_info_message(pEnv);
+
   return 0;
 }

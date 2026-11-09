@@ -1038,8 +1038,10 @@ extern void stop_attack_cowpatty(int stop_att) {
         
         /* Collect and test command-line arguments */
         //parseopts(&opt, argc, argv);
-        if(testopts(&opt) == -1)
-        	return -1;
+        if(testopts(&opt) == -1) {
+            cleanup_info_message(env);
+            return -1;
+        }
         printf("\n");
 
         /* Populate capdata struct */
@@ -1049,6 +1051,7 @@ extern void stop_attack_cowpatty(int stop_att) {
             printf("Unsupported or unrecognized pcap file.\n");
             snprintf(mybuffer, sizeof(mybuffer), "Unsupported or unrecognized pcap file.\n");
         info_message(mybuffer, UPDATE_ERROR);
+            cleanup_info_message(env);
             return -1;
         }
 
@@ -1082,6 +1085,7 @@ extern void stop_attack_cowpatty(int stop_att) {
         snprintf(mybuffer, sizeof(mybuffer), "End of pcap capture file, incomplete four-way handshake "
                    "exchange. Try using a different capture.\n");
         info_message(mybuffer, UPDATE_ERROR);
+            cleanup_info_message(env);
             return -1;
         } else {
             if (cdata.ver == WPA_KEY_INFO_TYPE_HMAC_SHA1_AES) {
@@ -1107,6 +1111,7 @@ extern void stop_attack_cowpatty(int stop_att) {
 
         if (opt.checkonly) {
             /* Don't attack the PSK, just return non-error return code */
+            cleanup_info_message(env);
             return 0;
         }
 
@@ -1140,6 +1145,7 @@ extern void stop_attack_cowpatty(int stop_att) {
 
 		snprintf(mybuffer, sizeof(mybuffer), "Must specify dictfile or hashfile\n");
         info_message(mybuffer, UPDATE_ERROR);
+        cleanup_info_message(env);
         return 1;
 	}
 
@@ -1150,6 +1156,7 @@ extern void stop_attack_cowpatty(int stop_att) {
 
 		gettimeofday(&end, 0);
 		printstats(start, end, wordstested);
+		cleanup_info_message(env);
 		return 0;
 	} else {
 		printf("Unable to identify the PSK from the dictionary file. " 
@@ -1162,8 +1169,11 @@ extern void stop_attack_cowpatty(int stop_att) {
         info_message(mybuffer, UPDATE_ERROR);
 		gettimeofday(&end, 0);
 		printstats(start, end, wordstested);
+		cleanup_info_message(env);
 		return 1;
 	}
+
+	cleanup_info_message(env);
 
 	return 1;
 

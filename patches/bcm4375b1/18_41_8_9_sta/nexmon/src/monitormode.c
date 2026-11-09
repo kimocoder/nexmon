@@ -178,7 +178,6 @@ path_to_path_to_indirect_call_of_phy_ac_rssi_compute_hook2(void *rssi_related, s
         }
 
         wlc_recover_tsf64(wlc, wrxh, &myrtap->tsf.tsf_h, &myrtap->tsf.tsf_l);
-        myrtap->tsf.tsf_h = 0;
 
         myrtap->dbm_antsignal = wrxh->rssi;
         myrtap->dbm_antnoise = phy_noise_avg(wlc->pi);

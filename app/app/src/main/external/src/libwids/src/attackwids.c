@@ -68,7 +68,6 @@ int attack_wids(JNIEnv* pEnv, jobject pThis, jmethodID pMid, jmethodID pMid_stat
   int att_cnt;
   //stop_attackauthflood = 0;
   stop_attackwids = 0;
-  (*pEnv)->GetJavaVM(pEnv, &jvm);  
   
   setup_info_message(pEnv, pThis, pMid, pMid_stats, myid);
   snprintf(info_buffer, sizeof(info_buffer), "Attack Auth Flood started...\n");
@@ -81,6 +80,7 @@ int attack_wids(JNIEnv* pEnv, jobject pThis, jmethodID pMid, jmethodID pMid_stat
     printf("Starting OSDEP on %s failed\n", interface_name);
     snprintf(info_buffer, sizeof(info_buffer), "Starting OSDEP on %s failed\n", interface_name);
     info_message(info_buffer, UPDATE_ERROR);
+    cleanup_info_message(pEnv);
     return 2;
   }
   
@@ -89,14 +89,19 @@ int attack_wids(JNIEnv* pEnv, jobject pThis, jmethodID pMid, jmethodID pMid_stat
 
   
   cur_options = cur_attack->parse_options(ap_essid, use_chan_hopping, use_zero_chaos);
-  if (!cur_options) return 1;
+  if (!cur_options) {
+    cleanup_info_message(pEnv);
+    return 1;
+  }
 
   srandom(time(NULL));  //Fresh numbers each run
   
   //Parsing done, start attacks
   main_loop(cur_attack, cur_options);
 
-  (*pEnv)->DeleteGlobalRef(pEnv, cb_obj);
+  cleanup_info_message(pEnv);
+
+
 
   return 0;
 }

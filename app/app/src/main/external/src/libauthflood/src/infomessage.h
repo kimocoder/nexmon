@@ -7,13 +7,9 @@
 #define UPDATE_SUCCESS 2
 #define UPDATE_RUNNING 3
 
-JNIEnv *cb_jnienv;
-jobject cb_obj;
-jmethodID cb_mid;
-jmethodID cb_mid_stats;
+extern JavaVM* jvm;
 
-int cb_id;
-JavaVM* jvm;
+void cleanup_info_message(JNIEnv *env);
 
 void info_message_thread(char* mes, int reason, JNIEnv* env);
 
