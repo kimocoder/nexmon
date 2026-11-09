@@ -2692,6 +2692,195 @@ def print_analysis_report(
 
 
 # =============================================================================
+# Firmware Patch Scaffolding
+# =============================================================================
+
+@dataclass
+class PatchScaffoldResult:
+    chip: str
+    version: str
+    variant: str
+    patch_dir: Path
+    created_files: List[Path]
+    definitions_file: Optional[Path]
+    definitions: Dict[str, str]
+
+
+class FirmwarePatchScaffolder:
+    """Scaffolds patch directories, Makefiles, and C patch stubs for new firmware targets."""
+
+    REPO_ROOT = Path(__file__).resolve().parent
+    FIRMWARES_DIR = REPO_ROOT / "firmwares"
+    PATCHES_DIR = REPO_ROOT / "patches"
+
+    @classmethod
+    def parse_definitions_mk(cls, defs_path: Path) -> Dict[str, str]:
+        """Parse KEY=VALUE pairs from a definitions.mk file."""
+        defs: Dict[str, str] = {}
+        if not defs_path.is_file():
+            return defs
+        for line in defs_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" in line:
+                k, v = line.split("=", 1)
+                defs[k.strip()] = v.strip()
+        return defs
+
+    @classmethod
+    def generate_version_mk(cls, chip: str, version: str) -> str:
+        """Generate version.mk contents."""
+        return f"FW_PATH=$(NEXMON_ROOT)/firmwares/{chip}/{version}\n"
+
+    @classmethod
+    def generate_patch_makefile(
+        cls,
+        chip: str,
+        version: str,
+        definitions: Dict[str, str],
+        variant: str = "nexmon",
+    ) -> str:
+        """Generate variant Makefile using standard firmware_patch.mk template."""
+        return (
+            "NEXMON_ROOT ?= $(abspath ../../../..)\n"
+            "include ../version.mk\n"
+            "include $(FW_PATH)/definitions.mk\n\n"
+            "LOCAL_SRCS=$(wildcard src/*.c) src/ucode_compressed.c src/templateram.c\n"
+            "COMMON_SRCS=$(wildcard $(NEXMON_ROOT)/patches/common/*.c)\n"
+            "FW_SRCS=$(wildcard $(FW_PATH)/*.c)\n\n"
+            "CFLAGS = \\\n"
+            "\t-DWLC_UCODE_WRITE_BL_HOOK_ADDR=$(WLC_UCODE_WRITE_BL_HOOK_ADDR) \\\n"
+            "\t-DHNDRTE_RECLAIM_0_END_PTR=$(HNDRTE_RECLAIM_0_END_PTR) \\\n"
+            "\t-DTEMPLATERAMSTART_PTR=$(TEMPLATERAMSTART_PTR) \\\n"
+            "\t-DPATCHSTART=$(PATCHSTART) \\\n"
+            "\t-DUCODESIZE=$(UCODESIZE)\n\n"
+            "NEXMON_BUILD_DRIVER = 1\n"
+            "EXTRA_PHONY = backup-firmware install-firmware\n"
+            "include $(NEXMON_ROOT)/patches/common/firmware_patch.mk\n\n"
+            "gen/dummy.idc gen/ucode.asm gen/ucode.bin gen/ucode_compressed.bin src/ucode_compressed.c src/templateram.c: | init\n\n"
+            "all: $(RAM_FILE) brcmfmac.ko\n\n"
+            "gen/memory.ld: $(FW_PATH)/definitions.mk\n"
+            '\t@printf "\\033[0;31m  GENERATING LINKER FILE\\033[0m %s\\n" $@\n'
+            '\t$(Q)printf "rom : ORIGIN = 0x%08x, LENGTH = 0x%08x\\n" $(ROMSTART) $(ROMSIZE) > $@\n'
+            '\t$(Q)printf "ram : ORIGIN = 0x%08x, LENGTH = 0x%08x\\n" $(RAMSTART) $(RAMSIZE) >> $@\n'
+            '\t$(Q)printf "patch : ORIGIN = 0x%08x, LENGTH = 0x%08x\\n" $(PATCHSTART) $(PATCHSIZE) >> $@\n'
+            '\t$(Q)printf "ucode : ORIGIN = 0x%08x, LENGTH = 0x%08x\\n" $(UCODESTART) $$(($(FP_CONFIG_BASE) - $(UCODESTART))) >> $@\n'
+            '\t$(Q)printf "fpconfig : ORIGIN = 0x%08x, LENGTH = 0x%08x\\n" $(FP_CONFIG_BASE) $(FP_CONFIG_SIZE) >> $@\n\n'
+            "gen/dummy.idc: $(RAM_FILE)\n"
+            '\t@printf "\\033[0;31m  GENERATING IDC FILE\\033[0m gen/nexmon.pre => %s\\n" $@\n'
+            '\t$(Q)cat gen/nexmon.pre | gawk \'BEGIN { printf "#import <idc.idc>\\n\\nstatic main() {\\n" } { if (!seen[$$0]++ && $$2 == "DUMMY") { printf "\\tMakeName(%s,\\"%s\\");\\n",$$1,$$4 }; } END { printf "}\\n" }\' > $@\n\n'
+            "###################################################################\n"
+            "# ucode compression related\n"
+            "###################################################################\n\n"
+            "gen/ucode.asm: $(FW_PATH)/ucode.bin\n"
+            '\t@printf "\\033[0;31m  DISASSEMBLING UCODE\\033[0m %s => %s\\n" $< $@\n'
+            "\t$(Q)$(NEXMON_ROOT)/buildtools/b43-unified/disassembler/b43-dasm $< $@ --arch 15 --format raw-le32\n"
+            "\t$(Q)$(NEXMON_ROOT)/buildtools/b43-unified/debug/b43-beautifier --asmfile $@ --defs $(NEXMON_ROOT)/buildtools/b43-unified/debug/include > $@.tmp && mv $@.tmp $@\n\n"
+            "ifneq ($(wildcard src/ucode.asm), )\n"
+            "gen/ucode.bin: src/ucode.asm\n"
+            '\t@printf "\\033[0;31m  ASSEMBLING UCODE\\033[0m %s => %s\\n" $< $@\n\n'
+            "ifneq ($(wildcard $(NEXMON_ROOT)/buildtools/b43-unified/assembler/b43-asm.bin), )\n"
+            "\t$(Q)PATH=$(PATH):$(NEXMON_ROOT)/buildtools/b43-unified/assembler $(NEXMON_ROOT)/buildtools/b43-unified/assembler/b43-asm $< $@ --format raw-le32\n"
+            "else\n"
+            "\t$(Q)PATH=$(PATH):$(NEXMON_ROOT)/buildtools/b43/assembler $(NEXMON_ROOT)/buildtools/b43/assembler/b43-asm $< $@ --format raw-le32\n"
+            "endif\n"
+            "endif\n"
+        )
+
+    @classmethod
+    def generate_patch_c(
+        cls,
+        chip: str,
+        version: str,
+        definitions: Dict[str, str],
+        variant: str = "nexmon",
+    ) -> str:
+        """Generate src/patch.c template with appropriate chip/version pragmas."""
+        chip_macro = definitions.get("NEXMON_CHIP", f"CHIP_VER_{chip.upper()}")
+        fw_macro = definitions.get("NEXMON_FW_VERSION", f"FW_VER_{version}")
+
+        return (
+            '#pragma NEXMON targetregion "patch"\n\n'
+            "#include <firmware_version.h>\n"
+            "#include <wrapper.h>\n"
+            "#include <structs.h>\n"
+            "#include <patcher.h>\n"
+            "#include <helper.h>\n"
+            "#include <capabilities.h>\n\n"
+            "int capabilities = NEX_CAP_MONITOR_MODE | NEX_CAP_MONITOR_MODE_RADIOTAP | NEX_CAP_FRAME_INJECTION;\n\n"
+            "// Hook the call to wlc_ucode_write in wlc_ucode_download\n"
+            f'__attribute__((at(WLC_UCODE_WRITE_BL_HOOK_ADDR, "", {chip_macro}, {fw_macro})))\n'
+            "BLPatch(wlc_ucode_write_compressed, wlc_ucode_write_compressed);\n\n"
+            f'__attribute__((at(HNDRTE_RECLAIM_0_END_PTR, "", {chip_macro}, {fw_macro})))\n'
+            "GenericPatch4(hndrte_reclaim_0_end, PATCHSTART);\n\n"
+            "extern unsigned char templateram_bin[];\n\n"
+            "// Moving template ram to another place in the ucode region\n"
+            "#if TEMPLATERAMSTART_PTR != 0\n"
+            f'__attribute__((at(TEMPLATERAMSTART_PTR, "", {chip_macro}, {fw_macro})))\n'
+            "GenericPatch4(templateram_bin, templateram_bin);\n"
+            "#endif\n"
+        )
+
+    @classmethod
+    def scaffold_patch(
+        cls,
+        chip: str,
+        version: str,
+        variant: str = "nexmon",
+        force: bool = False,
+        dry_run: bool = False,
+        patches_root: Optional[Path] = None,
+        firmwares_root: Optional[Path] = None,
+    ) -> PatchScaffoldResult:
+        """Scaffold a new patch target directory with version.mk, Makefile, and patch.c."""
+        p_root = patches_root or cls.PATCHES_DIR
+        f_root = firmwares_root or cls.FIRMWARES_DIR
+
+        chip = chip.strip().lower()
+        version = version.strip()
+        variant = variant.strip()
+
+        target_patch_dir = p_root / chip / version / variant
+        version_mk_path = p_root / chip / version / "version.mk"
+        makefile_path = target_patch_dir / "Makefile"
+        patch_c_path = target_patch_dir / "src" / "patch.c"
+
+        defs_path = f_root / chip / version / "definitions.mk"
+        defs = cls.parse_definitions_mk(defs_path) if defs_path.is_file() else {}
+
+        if not force and makefile_path.is_file() and not dry_run:
+            raise FileExistsError(
+                f"Patch target already exists at {target_patch_dir}. Use --force to overwrite."
+            )
+
+        files_to_create = {
+            version_mk_path: cls.generate_version_mk(chip, version),
+            makefile_path: cls.generate_patch_makefile(chip, version, defs, variant=variant),
+            patch_c_path: cls.generate_patch_c(chip, version, defs, variant=variant),
+        }
+
+        created: List[Path] = []
+        if not dry_run:
+            for file_path, content in files_to_create.items():
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                file_path.write_text(content, encoding="utf-8")
+                created.append(file_path)
+        else:
+            created = list(files_to_create.keys())
+
+        return PatchScaffoldResult(
+            chip=chip,
+            version=version,
+            variant=variant,
+            patch_dir=target_patch_dir,
+            created_files=created,
+            definitions_file=defs_path if defs_path.is_file() else None,
+            definitions=defs,
+        )
+
+
+# =============================================================================
 # Main Entry Point & CLI Parsers
 # =============================================================================
 
@@ -2793,6 +2982,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_edit.add_argument("-o", "--out", help="Write to output file (default: edit in-place)")
     p_edit.add_argument("--set-tag", help="Update the nexmon.org version tag")
     p_edit.add_argument("-p", "--patch", action="append", metavar="ADDR:HEX", help="Apply hex patch at memory address, e.g. 0x20B988:bd8d2200")
+
+    # 7. INIT-PATCH
+    p_init = subparsers.add_parser(
+        "init-patch",
+        help="Scaffold a new Nexmon firmware patch target directory and Makefiles",
+    )
+    p_init.add_argument("chip", help="Target chip identifier (e.g. bcm43455c0, bcm43436b0)")
+    p_init.add_argument("version", help="Target firmware version (e.g. 7_45_189, 9_88_4_65)")
+    p_init.add_argument("--variant", default="nexmon", help="Patch variant directory name (default: nexmon)")
+    p_init.add_argument("-f", "--force", action="store_true", help="Overwrite existing patch files")
+    p_init.add_argument("-d", "--dry-run", action="store_true", help="Preview generated files without writing")
 
     return parser
 
@@ -2951,6 +3151,43 @@ def main() -> int:
                 for c in res['changes']:
                     print(f"    - {c}")
                 print()
+            return 0
+
+        elif args.command == "init-patch":
+            res = FirmwarePatchScaffolder.scaffold_patch(
+                chip=args.chip,
+                version=args.version,
+                variant=args.variant,
+                force=args.force,
+                dry_run=args.dry_run,
+            )
+            if args.json:
+                print(
+                    json.dumps(
+                        {
+                            "chip": res.chip,
+                            "version": res.version,
+                            "variant": res.variant,
+                            "patch_dir": str(res.patch_dir),
+                            "created_files": [str(p) for p in res.created_files],
+                            "definitions_file": str(res.definitions_file) if res.definitions_file else None,
+                            "dry_run": args.dry_run,
+                        },
+                        indent=2,
+                    )
+                )
+            else:
+                mode_str = " (dry-run)" if args.dry_run else ""
+                print(f"{Style.BOLD}{Style.GREEN}✓ Scaffolded firmware patch target{mode_str}:{Style.RESET}")
+                print(f"  Chip:        {Style.CYAN}{res.chip}{Style.RESET}")
+                print(f"  Version:     {Style.CYAN}{res.version}{Style.RESET}")
+                print(f"  Variant:     {res.variant}")
+                print(f"  Directory:   {res.patch_dir}")
+                if res.definitions_file:
+                    print(f"  Definitions: {res.definitions_file}")
+                print("\nFiles generated:")
+                for f in res.created_files:
+                    print(f"  • {f}")
             return 0
 
     except Exception as e:

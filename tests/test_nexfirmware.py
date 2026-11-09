@@ -915,6 +915,91 @@ class TestVersionsCommand(unittest.TestCase):
         self.assertEqual(status, 1)
         self.assertIn("detection failed", stderr.getvalue())
 
+    def test_scaffold_patch_dry_run(self):
+        """Test scaffolding in dry-run mode without touching disk."""
+        res = nexfirmware.FirmwarePatchScaffolder.scaffold_patch(
+            chip="bcm43455c0",
+            version="7_45_189",
+            dry_run=True,
+        )
+        self.assertEqual(res.chip, "bcm43455c0")
+        self.assertEqual(res.version, "7_45_189")
+        self.assertEqual(res.variant, "nexmon")
+        self.assertEqual(len(res.created_files), 3)
+        self.assertIn("NEXMON_CHIP", res.definitions)
+        self.assertEqual(res.definitions["NEXMON_CHIP"], "CHIP_VER_BCM43455c0")
+
+    def test_scaffold_patch_write_and_overwrite_guards(self):
+        """Test full disk generation of version.mk, Makefile, and patch.c."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            p_root = Path(tmpdir) / "patches"
+            f_root = Path(tmpdir) / "firmwares"
+
+            # Create mock definitions.mk
+            mock_fw_dir = f_root / "bcm43999" / "1_2_3"
+            mock_fw_dir.mkdir(parents=True)
+            defs_file = mock_fw_dir / "definitions.mk"
+            defs_file.write_text("NEXMON_CHIP=CHIP_VER_BCM43999\nNEXMON_FW_VERSION=FW_VER_1_2_3\n")
+
+            res = nexfirmware.FirmwarePatchScaffolder.scaffold_patch(
+                chip="bcm43999",
+                version="1_2_3",
+                patches_root=p_root,
+                firmwares_root=f_root,
+            )
+            self.assertEqual(len(res.created_files), 3)
+
+            version_mk = p_root / "bcm43999" / "1_2_3" / "version.mk"
+            makefile = p_root / "bcm43999" / "1_2_3" / "nexmon" / "Makefile"
+            patch_c = p_root / "bcm43999" / "1_2_3" / "nexmon" / "src" / "patch.c"
+
+            self.assertTrue(version_mk.is_file())
+            self.assertTrue(makefile.is_file())
+            self.assertTrue(patch_c.is_file())
+
+            # Check contents
+            self.assertIn("FW_PATH=$(NEXMON_ROOT)/firmwares/bcm43999/1_2_3", version_mk.read_text())
+            self.assertIn("firmware_patch.mk", makefile.read_text())
+            self.assertIn("CHIP_VER_BCM43999", patch_c.read_text())
+            self.assertIn("FW_VER_1_2_3", patch_c.read_text())
+
+            # Attempt overwrite without force must raise FileExistsError
+            with self.assertRaises(FileExistsError):
+                nexfirmware.FirmwarePatchScaffolder.scaffold_patch(
+                    chip="bcm43999",
+                    version="1_2_3",
+                    patches_root=p_root,
+                    firmwares_root=f_root,
+                    force=False,
+                )
+
+            # Overwrite with force=True must succeed
+            res_force = nexfirmware.FirmwarePatchScaffolder.scaffold_patch(
+                chip="bcm43999",
+                version="1_2_3",
+                patches_root=p_root,
+                firmwares_root=f_root,
+                force=True,
+            )
+            self.assertEqual(len(res_force.created_files), 3)
+
+    def test_init_patch_cli_dispatch(self):
+        """Test nexfirmware init-patch CLI command dispatch."""
+        stdout = io.StringIO()
+        with (
+            mock.patch.object(
+                nexfirmware.sys,
+                "argv",
+                ["nexfirmware", "init-patch", "bcm43455c0", "7_45_189", "--dry-run"],
+            ),
+            mock.patch.object(nexfirmware.sys, "stdout", stdout),
+        ):
+            status = nexfirmware.main()
+
+        self.assertEqual(status, 0)
+        self.assertIn("Scaffolded firmware patch target (dry-run)", stdout.getvalue())
+        self.assertIn("bcm43455c0", stdout.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
