@@ -22,6 +22,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import struct
 import subprocess
@@ -212,6 +213,141 @@ def extract_firmware_version(data: bytes) -> str:
     """Extract a dotted Broadcom/Cypress firmware version when present."""
     match = FIRMWARE_VERSION_RE.search(data)
     return match.group(1).decode("utf-8", errors="ignore") if match else ""
+
+
+def parse_brcmfmac_firmware_log(text: str) -> Dict[str, str]:
+    for line in reversed(text.splitlines()):
+        if "brcmfmac" not in line.lower() or "firmware:" not in line.lower():
+            continue
+        version_match = re.search(
+            r"\bversion\s+(\d[^\s]*(?:\s+\([^)]+\))?)", line, re.IGNORECASE
+        )
+        if not version_match:
+            continue
+        result = {"version": version_match.group(1)}
+        fwid_match = re.search(r"\bFWID\s+([0-9a-fA-F-]+)", line)
+        if fwid_match:
+            result["fwid"] = fwid_match.group(1)
+        return result
+    return {}
+
+
+class LocalCommandRunner:
+    def run(self, args: List[str]) -> subprocess.CompletedProcess:
+        return subprocess.run(args, capture_output=True, text=True, timeout=5)
+
+
+class AdbCommandRunner:
+    def __init__(self, serial: Optional[str] = None, root: bool = False):
+        self.serial = serial
+        self.root = root
+
+    def run(self, args: List[str]) -> subprocess.CompletedProcess:
+        command = ["adb"]
+        if self.serial:
+            command.extend(["-s", self.serial])
+        command.append("shell")
+        remote_command = shlex.join(args)
+        if self.root:
+            command.extend(["su", "-c", shlex.quote(remote_command)])
+        else:
+            command.append(remote_command)
+        return subprocess.run(command, capture_output=True, text=True, timeout=5)
+
+    def check_connection(self) -> None:
+        command = ["adb"]
+        if self.serial:
+            command.extend(["-s", self.serial])
+        command.append("get-state")
+        result = subprocess.run(command, capture_output=True, text=True, timeout=5)
+        if result.returncode != 0 or result.stdout.strip() != "device":
+            detail = (result.stderr or result.stdout).strip().splitlines()
+            suffix = f": {detail[-1]}" if detail else ""
+            raise RuntimeError(f"ADB device is not ready{suffix}")
+
+
+def _run_version_command(
+    runner: Any, args: List[str], warnings: List[str]
+) -> Optional[subprocess.CompletedProcess]:
+    try:
+        result = runner.run(args)
+    except (OSError, subprocess.SubprocessError) as exc:
+        warnings.append(f"{' '.join(args)}: {exc}")
+        return None
+    if result.returncode != 0:
+        detail = (result.stderr or "").strip().splitlines()
+        suffix = f": {detail[-1]}" if detail else f": exit {result.returncode}"
+        warnings.append(f"{' '.join(args)}{suffix}")
+    return result
+
+
+def detect_brcmfmac_versions(runner: Any, target: Dict[str, Any]) -> Dict[str, Any]:
+    warnings: List[str] = []
+    driver = {
+        "module_name": "brcmfmac",
+        "state": "not_found",
+        "version": None,
+        "version_source": None,
+        "module_path": None,
+        "dependencies": [],
+    }
+
+    lsmod = _run_version_command(runner, ["lsmod"], warnings)
+    if lsmod and lsmod.returncode == 0:
+        for line in (lsmod.stdout or "").splitlines():
+            parts = line.split()
+            if parts and parts[0] == "brcmfmac":
+                driver["state"] = "loaded"
+                if len(parts) >= 4 and parts[3]:
+                    driver["dependencies"] = parts[3].split(",")
+                break
+
+    modinfo = _run_version_command(runner, ["modinfo", "brcmfmac"], warnings)
+    if modinfo and modinfo.returncode == 0:
+        for line in (modinfo.stdout or "").splitlines():
+            if line.startswith("version:"):
+                driver["version"] = line.split(":", 1)[1].strip() or None
+                driver["version_source"] = "modinfo"
+            elif line.startswith("filename:"):
+                driver["module_path"] = line.split(":", 1)[1].strip() or None
+
+    sysfs = _run_version_command(
+        runner, ["test", "-d", "/sys/module/brcmfmac"], warnings
+    )
+    if sysfs and sysfs.returncode == 0 and driver["state"] == "not_found":
+        driver["state"] = "present"
+
+    sysfs_version = _run_version_command(
+        runner, ["cat", "/sys/module/brcmfmac/version"], warnings
+    )
+    if sysfs_version and sysfs_version.returncode == 0:
+        version = (sysfs_version.stdout or "").strip()
+        if version:
+            driver["version"] = version
+            driver["version_source"] = "sysfs"
+
+    dmesg = _run_version_command(runner, ["dmesg"], warnings)
+    firmware = {
+        "status": "not_found",
+        "version": None,
+        "fwid": None,
+        "source": None,
+    }
+    if not dmesg or dmesg.returncode != 0:
+        firmware["status"] = "unavailable"
+    else:
+        parsed = parse_brcmfmac_firmware_log(dmesg.stdout or "")
+        if parsed:
+            firmware.update(parsed)
+            firmware["status"] = "found"
+            firmware["source"] = "kernel_log"
+
+    return {
+        "target": dict(target),
+        "driver": driver,
+        "firmware": firmware,
+        "warnings": warnings,
+    }
 
 
 def read_firmware_blob(path: Union[str, Path]) -> bytes:
@@ -2280,6 +2416,34 @@ class FirmwareManager:
 # CLI Presentation & Command Dispatcher
 # =============================================================================
 
+def print_version_report(report: Dict[str, Any], as_json: bool = False) -> None:
+    if as_json:
+        print(json.dumps(report, indent=2))
+        return
+
+    target = report["target"]
+    target_label = target["type"]
+    if target.get("serial"):
+        target_label += f" ({target['serial']})"
+    driver = report["driver"]
+    firmware = report["firmware"]
+    print(f"Target: {target_label}")
+    print(f"Driver: {driver['module_name']} ({driver['state'].replace('_', ' ')})")
+    version = driver["version"] or "unavailable"
+    if driver["version"] and driver["version_source"]:
+        version += f" ({driver['version_source']})"
+    print(f"Driver version: {version}")
+    if driver["module_path"]:
+        print(f"Module path: {driver['module_path']}")
+    print(f"Firmware version: {firmware['version'] or firmware['status']}")
+    if firmware["fwid"]:
+        print(f"Firmware ID: {firmware['fwid']}")
+    if report["warnings"]:
+        print("Warnings:")
+        for warning in report["warnings"]:
+            print(f"  - {warning}")
+
+
 def print_detection_report(rep: DeviceDetectionReport, as_json: bool = False):
     if as_json:
         # Convert dataclasses to dict — include ls -l firmware directory info
@@ -2547,6 +2711,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_detect = subparsers.add_parser("detect", help="Detect brcmfmac wireless chip, driver, and active firmware")
     p_detect.add_argument("-i", "--interface", default="wlan0", help="Network interface to query (default: wlan0)")
 
+    p_versions = subparsers.add_parser(
+        "versions", help="Report brcmfmac driver and running firmware versions"
+    )
+    p_versions.add_argument("--adb", action="store_true", help="Inspect an Android device over ADB")
+    p_versions.add_argument("--serial", help="ADB device serial")
+    p_versions.add_argument("--root", action="store_true", help="Use su on the Android device")
+
     # 2. REVERSE / ANALYZE
     p_rev = subparsers.add_parser("reverse", aliases=["analyze"], help="Reverse engineer firmware binary (memory map, ucode, flashpatches)")
     p_rev.add_argument("file", help="Path to firmware binary (.bin)")
@@ -2642,6 +2813,22 @@ def main() -> int:
         if args.command in ("detect",):
             rep = DeviceDetector.full_detection(interface=args.interface)
             print_detection_report(rep, as_json=args.json)
+            return 0
+
+        elif args.command == "versions":
+            if not args.adb and (args.serial or args.root):
+                raise ValueError("--serial and --root require --adb")
+            if args.adb:
+                if shutil.which("adb") is None:
+                    raise RuntimeError("adb executable not found")
+                runner = AdbCommandRunner(serial=args.serial, root=args.root)
+                runner.check_connection()
+                target = {"type": "adb", "serial": args.serial}
+            else:
+                runner = LocalCommandRunner()
+                target = {"type": "local", "serial": None}
+            report = detect_brcmfmac_versions(runner, target)
+            print_version_report(report, as_json=args.json)
             return 0
 
         elif args.command in ("reverse", "analyze"):

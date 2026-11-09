@@ -32,8 +32,24 @@ Our software may damage your hardware and may void your hardware’s warranty! Y
 ## Firmware toolkit
 
 `nexfirmware.py` detects the active Broadcom/Cypress firmware, analyzes firmware
-images, installs patched images, and restores stock firmware. Preview automatic
-stock-firmware discovery before changing the system:
+images, installs patched images, and restores stock firmware.
+
+The read-only `versions` command reports the `brcmfmac` driver and running
+firmware versions on the local host or an Android device. Use `--serial` when
+multiple devices are attached and `--root` only on devices with `su`:
+
+```sh
+./nexfirmware.py versions
+./nexfirmware.py --json versions
+./nexfirmware.py versions --adb
+./nexfirmware.py versions --adb --serial DEVICE_SERIAL --root
+```
+
+Permission-limited module files or kernel logs produce warnings and an explicit
+unavailable status; the tool does not infer versions from unrelated drivers or
+firmware filenames.
+
+Preview automatic stock-firmware discovery before changing the system:
 
 ```sh
 ./nexfirmware.py restore --dry-run
