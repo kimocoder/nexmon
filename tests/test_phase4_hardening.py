@@ -232,6 +232,12 @@ class TestCodeQLSecurityFixes(unittest.TestCase):
             text = src.read_text(errors="replace")
             self.assertIn('(unsigned int)(uintptr_t) lr', text)
 
+        stop_c = ROOT / "patches/bcm43455c0/7_45_189/nexmon_simplified/src/stop.c"
+        self.assertIn('(unsigned int)(uintptr_t) r0', stop_c.read_text(errors="replace"))
+
+        debugger_c = ROOT / "patches/bcm43455c0/7_45_189/nexmon_simplified/src/debugger.c"
+        self.assertIn('(char *) trace->r1', debugger_c.read_text(errors="replace"))
+
     def test_csi_default_bind_localhost(self):
         csi_py = ROOT / "python/pynexmon/csi.py"
         text = csi_py.read_text(errors="replace")

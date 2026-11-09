@@ -140,7 +140,7 @@ handle_pref_abort_exception(struct trace *trace)
             dbg_set_breakpoint_type_to_instr_addr_mismatch(0);
 
             if (!strncmp((char *) trace->r1, "sdpcmd_dpc", 10)) {
-                printf("   BP0 step %d: pc=%08x *r1=%s\n", breakpoint_cnt0, trace->pc, trace->r1);
+                printf("   BP0 step %d: pc=%08x *r1=%s\n", breakpoint_cnt0, trace->pc, (char *) trace->r1);
                 // activate single-stepping for this breakpoint
                 single_stepping |= DBGBP0;
             }

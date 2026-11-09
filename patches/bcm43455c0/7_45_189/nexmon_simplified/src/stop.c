@@ -119,7 +119,7 @@ HookPatch4(si_pmu_chipcontrol_hook, si_pmu_chipcontrol_hook, "push {r0-r2,r4-r7,
 void
 after_si_kattach_hook(void *r0, uint32 r1)
 {
-	printf("%s %08x %08x\n", __FUNCTION__, r0, r1);
+	printf("%s %08x %08x\n", __FUNCTION__, (unsigned int)(uintptr_t) r0, r1);
 	printf("dbg %08x %08x\n", (get_DBGDRAR() & 0xFFFFF000) + (get_DBGDSAR() & 0xFFFFF000), get_DBGDIDR());
 //	printf("DBGAUTHSTATUS %08x\n", get_DBGAUTHSTATUS());
 	si_swdenable((void *) 0x20326c, 1);
