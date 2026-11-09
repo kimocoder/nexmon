@@ -52,6 +52,33 @@ class TestNexutilCli(unittest.TestCase):
             # 4 bytes dumped = 1 line
             self.assertEqual(len(lines), 1)
 
+    def test_nexutil_hop_help_options(self):
+        """Verify that nexutil --help documents the in-daemon channel hopper options."""
+        res = subprocess.run([str(NEXUTIL_BIN), "--help"], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("--hop", res.stdout)
+        self.assertIn("--interval", res.stdout)
+        self.assertIn("--hop-count", res.stdout)
+        self.assertIn("--quiet", res.stdout)
+
+    def test_nexutil_hop_invalid_channels(self):
+        """Verify that invalid channels are rejected cleanly."""
+        res = subprocess.run([str(NEXUTIL_BIN), "--hop", "invalid_ch"], capture_output=True, text=True)
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("ERR: invalid hop channels 'invalid_ch'", res.stderr)
+
+    def test_nexutil_hop_invalid_interval(self):
+        """Verify that invalid interval (<= 0) is rejected cleanly."""
+        res = subprocess.run([str(NEXUTIL_BIN), "--hop", "1,6,11", "--interval", "0"], capture_output=True, text=True)
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("ERR: invalid interval '0'", res.stderr)
+
+    def test_nexutil_hop_conflict_with_chanspec(self):
+        """Verify that specifying both -k and -H is rejected."""
+        res = subprocess.run([str(NEXUTIL_BIN), "--chanspec=1", "--hop=1,6,11"], capture_output=True, text=True)
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("ERR: cannot combine --chanspec (-k) with --hop (-H)", res.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

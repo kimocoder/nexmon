@@ -43,6 +43,19 @@ class PyNexmonTests(unittest.TestCase):
         with self.assertRaises(NexmonError):
             NexmonDevice("nonexistent_iface_9999")
 
+    def test_channel_hop_generator(self):
+        """Test NexmonDevice.channel_hop generator parsing and sequence."""
+        from unittest.mock import MagicMock
+        dev = NexmonDevice.__new__(NexmonDevice)
+        dev._handle = 1
+        dev._bindings = MagicMock()
+        dev.set_chanspec = MagicMock()
+
+        hops = list(dev.channel_hop("1, 6, 11", interval_ms=1, count=3))
+        self.assertEqual(len(hops), 3)
+        self.assertEqual([h[0] for h in hops], [0x1001, 0x1006, 0x100b])
+        self.assertEqual(dev.set_chanspec.call_count, 3)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

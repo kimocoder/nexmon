@@ -52,6 +52,7 @@
 #include <sys/ioctl.h>
 #include <arpa/inet.h>
 #include <signal.h>
+#include <time.h>
 #ifdef BUILD_ON_RPI
 #include <linux/if.h>
 #else
@@ -134,6 +135,152 @@ unsigned int    write_templ_val = 0;
 unsigned char   dump_templ = false;
 unsigned int    dump_templ_offset = 0;
 
+#define MAX_HOP_CHANNELS 256
+
+struct hop_config {
+    uint32_t chanspecs[MAX_HOP_CHANNELS];
+    int count;
+    unsigned int interval_ms;
+    unsigned int hop_count;
+    bool enabled;
+};
+
+static struct hop_config hop_cfg = {
+    .chanspecs = { 0 },
+    .count = 0,
+    .interval_ms = 250,
+    .hop_count = 0,
+    .enabled = false,
+};
+
+static unsigned char quiet = 0;
+static volatile sig_atomic_t g_hopper_stop = 0;
+
+static void
+hopper_sig_handler(int sig)
+{
+    (void) sig;
+    g_hopper_stop = 1;
+}
+
+static int
+parse_hop_channels(const char *arg, struct hop_config *cfg)
+{
+    if (!arg || !*arg || !cfg)
+        return -1;
+
+    cfg->count = 0;
+    char *copy = strdup(arg);
+    if (!copy)
+        return -1;
+
+    char *saveptr = NULL;
+    char *token = strtok_r(copy, ",; \t", &saveptr);
+    while (token && cfg->count < MAX_HOP_CHANNELS) {
+        while (*token == ' ' || *token == '\t') token++;
+        char *end = token + strlen(token) - 1;
+        while (end > token && (*end == ' ' || *end == '\t')) {
+            *end = '\0';
+            end--;
+        }
+        if (!*token) {
+            token = strtok_r(NULL, ",; \t", &saveptr);
+            continue;
+        }
+
+        if (strcasecmp(token, "2g") == 0 || strcasecmp(token, "2.4g") == 0) {
+            for (int ch = 1; ch <= 13 && cfg->count < MAX_HOP_CHANNELS; ch++) {
+                char ch_s[8];
+                snprintf(ch_s, sizeof(ch_s), "%d", ch);
+                uint32_t cs = wf_chspec_aton(ch_s);
+                if (cs && cs != INVCHANSPEC)
+                    cfg->chanspecs[cfg->count++] = cs;
+            }
+        } else if (strcasecmp(token, "5g") == 0) {
+            static const uint8_t ch5g[] = {
+                36, 40, 44, 48, 52, 56, 60, 64,
+                100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140,
+                149, 153, 157, 161, 165
+            };
+            for (size_t i = 0; i < sizeof(ch5g) && cfg->count < MAX_HOP_CHANNELS; i++) {
+                char ch_s[8];
+                snprintf(ch_s, sizeof(ch_s), "%d", ch5g[i]);
+                uint32_t cs = wf_chspec_aton(ch_s);
+                if (cs && cs != INVCHANSPEC)
+                    cfg->chanspecs[cfg->count++] = cs;
+            }
+        } else if (strcasecmp(token, "all") == 0) {
+            for (int ch = 1; ch <= 13 && cfg->count < MAX_HOP_CHANNELS; ch++) {
+                char ch_s[8];
+                snprintf(ch_s, sizeof(ch_s), "%d", ch);
+                uint32_t cs = wf_chspec_aton(ch_s);
+                if (cs && cs != INVCHANSPEC)
+                    cfg->chanspecs[cfg->count++] = cs;
+            }
+            static const uint8_t ch5g[] = {
+                36, 40, 44, 48, 52, 56, 60, 64,
+                100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140,
+                149, 153, 157, 161, 165
+            };
+            for (size_t i = 0; i < sizeof(ch5g) && cfg->count < MAX_HOP_CHANNELS; i++) {
+                char ch_s[8];
+                snprintf(ch_s, sizeof(ch_s), "%d", ch5g[i]);
+                uint32_t cs = wf_chspec_aton(ch_s);
+                if (cs && cs != INVCHANSPEC)
+                    cfg->chanspecs[cfg->count++] = cs;
+            }
+        } else {
+            char *range_sep = strstr(token, "..");
+            int sep_len = 2;
+            if (!range_sep) {
+                range_sep = strchr(token, '-');
+                sep_len = 1;
+            }
+            if (range_sep && range_sep != token && isdigit((unsigned char)*(range_sep - 1)) && isdigit((unsigned char)*(range_sep + sep_len))) {
+                *range_sep = '\0';
+                int start_ch = atoi(token);
+                int end_ch = atoi(range_sep + sep_len);
+                if (start_ch > 0 && end_ch >= start_ch && end_ch <= 250) {
+                    for (int ch = start_ch; ch <= end_ch && cfg->count < MAX_HOP_CHANNELS; ch++) {
+                        char ch_s[8];
+                        snprintf(ch_s, sizeof(ch_s), "%d", ch);
+                        uint32_t cs = wf_chspec_aton(ch_s);
+                        if (cs && cs != INVCHANSPEC)
+                            cfg->chanspecs[cfg->count++] = cs;
+                    }
+                } else {
+                    free(copy);
+                    return -1;
+                }
+            } else {
+                uint32_t cs = 0;
+                if (token[0] == '0' && (token[1] == 'x' || token[1] == 'X')) {
+                    cs = (uint32_t)strtoul(token, NULL, 16);
+                } else {
+                    cs = wf_chspec_aton(token);
+                    if (cs == 0 || cs == INVCHANSPEC) {
+                        char *ep = NULL;
+                        long ch = strtol(token, &ep, 10);
+                        if (ep != token && *ep == '\0' && ch > 0 && ch <= 250) {
+                            char ch_s[8];
+                            snprintf(ch_s, sizeof(ch_s), "%ld", ch);
+                            cs = wf_chspec_aton(ch_s);
+                        }
+                    }
+                }
+                if (cs == 0 || cs == INVCHANSPEC) {
+                    free(copy);
+                    return -1;
+                }
+                cfg->chanspecs[cfg->count++] = cs;
+            }
+        }
+        token = strtok_r(NULL, ",; \t", &saveptr);
+    }
+    free(copy);
+    return (cfg->count > 0) ? 0 : -1;
+}
+
 const char *argp_program_version = VERSION;
 const char *argp_program_bug_address = "<mschulz@seemoo.tu-darmstadt.de>";
 
@@ -162,6 +309,10 @@ static struct argp_option options[] = {
     {"dump-objmem", 'o', "INT", 0, "Dumps objmem at addr INT"},
     {"chanspec", 'k', "CHAR/INT", OPTION_ARG_OPTIONAL, "Set chanspec either as integer (e.g., 0x1001, set -i) or as string (e.g., 64/80)."},
     {"nonblock", 'n', 0, 0, "Non-blocking channel hopping mode (sub-2ms fast hop)"},
+    {"hop", 'H', "CHANNELS", 0, "Channel hopper: comma-separated list of channels/chanspecs (e.g. 1,6,11 or 1-13 or 2g or 5g)"},
+    {"interval", 't', "MS", 0, "Channel hopper dwell interval in milliseconds (default: 250 ms)"},
+    {"hop-count", 'C', "INT", 0, "Channel hopper iteration count (default: 0 = loop indefinitely)"},
+    {"quiet", 'q', 0, 0, "Quiet mode (suppress per-hop output)"},
     {"security-cookie", 'x', "INT", OPTION_ARG_OPTIONAL, "Set/Get security cookie"},
     {"use-udp-tunneling", 'X', "INT", 0, "Use UDP tunneling with security cookie INT"},
     {"broadcast-ip", 'B', "CHAR", 0, "Broadcast IP to use for UDP tunneling (default: 192.168.222.255)"},
@@ -509,6 +660,37 @@ parse_opt(int key, char *arg, struct argp_state *state)
             get_capabilities = true;
             last_optional_opt = 0;
             break;
+        case 'H':
+            if (arg) {
+                if (parse_hop_channels(arg, &hop_cfg) < 0) {
+                    fprintf(stderr, "ERR: invalid hop channels '%s'\n", arg);
+                    exit(EXIT_FAILURE);
+                }
+                hop_cfg.enabled = true;
+                last_optional_opt = 0;
+            }
+            break;
+        case 't':
+            if (arg) {
+                unsigned int val = parse_uint(arg, "interval", state);
+                if (val == 0 || val > 600000) {
+                    fprintf(stderr, "ERR: invalid interval '%s' (valid range: 1..600000 ms)\n", arg);
+                    exit(EXIT_FAILURE);
+                }
+                hop_cfg.interval_ms = val;
+                last_optional_opt = 0;
+            }
+            break;
+        case 'C':
+            if (arg) {
+                hop_cfg.hop_count = parse_uint(arg, "hop-count", state);
+                last_optional_opt = 0;
+            }
+            break;
+        case 'q':
+            quiet = 1;
+            last_optional_opt = 0;
+            break;
 
         case ARGP_KEY_ARG:
             switch (last_optional_opt) {
@@ -697,6 +879,11 @@ main(int argc, char **argv)
 
     argp_parse(&argp, argc, argv, 0, 0, 0);
 
+    if (hop_cfg.enabled && set_chanspec) {
+        fprintf(stderr, "ERR: cannot combine --chanspec (-k) with --hop (-H)\n");
+        exit(EXIT_FAILURE);
+    }
+
     /* Guard against wedged SDIO firmware that blocks ioctl indefinitely */
     signal(SIGALRM, ioctl_alarm_handler);
     alarm(10);
@@ -862,6 +1049,86 @@ main(int argc, char **argv)
                 }
             }
         }
+    }
+
+    if (hop_cfg.enabled) {
+        /* Cancel one-off 10-second alarm */
+        alarm(0);
+
+        /* Set up signal handlers for graceful exit on SIGINT or SIGTERM */
+        struct sigaction sa;
+        memset(&sa, 0, sizeof(sa));
+        sa.sa_handler = hopper_sig_handler;
+        sigemptyset(&sa.sa_mask);
+        sigaction(SIGINT, &sa, NULL);
+        sigaction(SIGTERM, &sa, NULL);
+
+        if (!quiet) {
+            printf("Channel hopper started on %s: %d channels, dwell %u ms%s%s\n",
+                   ifname, hop_cfg.count, hop_cfg.interval_ms,
+                   nonblock ? " (non-blocking)" : "",
+                   hop_cfg.hop_count > 0 ? "" : " (infinite loop)");
+            fflush(stdout);
+        }
+
+        unsigned int total_hops = 0;
+        int idx = 0;
+
+        while (!g_hopper_stop) {
+            uint32_t cs = hop_cfg.chanspecs[idx];
+            uint32_t cs_le = htole32(cs);
+            int hop_ret = 0;
+
+            if (nonblock) {
+                hop_ret = nex_ioctl_nonblock(nexio, NEX_SET_CHANSPEC_OVERRIDE, &cs_le, sizeof(cs_le));
+            } else {
+                alarm(5);
+                hop_ret = nex_ioctl(nexio, NEX_SET_CHANSPEC_OVERRIDE, &cs_le, sizeof(cs_le), true);
+                if (hop_ret < 0) {
+                    char charbuf[16] __attribute__((aligned(4))) = "chanspec";
+                    memcpy(&charbuf[9], &cs_le, sizeof(cs_le));
+                    hop_ret = nex_ioctl(nexio, WLC_SET_VAR, charbuf, 13, true);
+                }
+                alarm(0);
+            }
+
+            char chanspec_str[CHANSPEC_STR_LEN] = { 0 };
+            bool is_psc = wf_chspec_is_6g_psc((chanspec_t) cs);
+            const char *cs_desc = wf_chspec_ntoa_ex((chanspec_t) cs, chanspec_str);
+
+            if (hop_ret < 0) {
+                fprintf(stderr, "WARN: hop to 0x%04x (%s) failed (err=%d)\n",
+                        cs, cs_desc ? cs_desc : "unknown", hop_ret);
+            } else if (!quiet) {
+                printf("[hop #%u] %s (0x%04x)%s\n",
+                       total_hops + 1, cs_desc ? cs_desc : "unknown", cs,
+                       is_psc ? " [6GHz PSC]" : "");
+                fflush(stdout);
+            }
+
+            total_hops++;
+            if (hop_cfg.hop_count > 0 && total_hops >= hop_cfg.hop_count)
+                break;
+
+            idx = (idx + 1) % hop_cfg.count;
+
+            /* Sleep for dwell interval */
+            struct timespec req, rem;
+            req.tv_sec = hop_cfg.interval_ms / 1000;
+            req.tv_nsec = (long)(hop_cfg.interval_ms % 1000) * 1000000L;
+            while (nanosleep(&req, &rem) == -1 && errno == EINTR) {
+                if (g_hopper_stop)
+                    break;
+                req = rem;
+            }
+        }
+
+        if (!quiet) {
+            printf("Channel hopper stopped (%u hops completed)\n", total_hops);
+            fflush(stdout);
+        }
+        nex_free(nexio);
+        return 0;
     }
 
     if (custom_cmd_set != -1) {
