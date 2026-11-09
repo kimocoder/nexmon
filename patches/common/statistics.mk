@@ -1,5 +1,16 @@
+_STAT_DISABLED :=
+ifneq ($(strip $(NEXMON_DISABLE_STATISTICS)$(DO_NOT_TRACK)),)
+_STAT_DISABLED := 1
+endif
+ifeq ($(DISABLE_STATISTICS),1)
+_STAT_DISABLED := 1
+endif
 ifneq ("$(wildcard $(NEXMON_ROOT)/DISABLE_STATISTICS)","")
-# Telemetry disabled via DISABLE_STATISTICS opt-out marker
+_STAT_DISABLED := 1
+endif
+
+ifeq ($(_STAT_DISABLED),1)
+# Telemetry disabled via DISABLE_STATISTICS opt-out marker or environment variable
 statistics: FORCE
 	@true
 else

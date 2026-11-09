@@ -142,10 +142,16 @@ analyse_ram(FILE *fp)
 
 	for (size_t i = 0; i + 7 <= ucode_length; i += 7) {
 		const unsigned char *p = base + i;
-		uint32_t a = ((uint32_t)p[3] << 24) | ((uint32_t)p[4] << 16) | ((uint32_t)p[5] << 8) | (uint32_t)p[6];
-		uint32_t b = ((uint32_t)p[0] << 16) | ((uint32_t)p[1] << 8) | (uint32_t)p[2];
-		if (fwrite(&a, sizeof(uint32_t), 1, fp) != 1 ||
-		    fwrite(&b, sizeof(uint32_t), 1, fp) != 1) {
+		unsigned char out[8];
+		out[0] = p[6];
+		out[1] = p[5];
+		out[2] = p[4];
+		out[3] = p[3];
+		out[4] = p[2];
+		out[5] = p[1];
+		out[6] = p[0];
+		out[7] = 0x00;
+		if (fwrite(out, sizeof(out), 1, fp) != 1) {
 			return -1;
 		}
 	}

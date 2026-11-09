@@ -2,7 +2,12 @@
 # shellcheck shell=bash
 
 OLD_PWD=$(pwd)
-cd "$(dirname "${BASH_SOURCE[0]}")" || return 1 2>/dev/null || exit 1
+if [ -n "${ZSH_VERSION:-}" ]; then
+    # shellcheck disable=SC2296
+    cd "$(dirname "${(%):-%x}")" || return 1 2>/dev/null || exit 1
+else
+    cd "$(dirname "${BASH_SOURCE[0]}")" || return 1 2>/dev/null || exit 1
+fi
 
 export HOSTUNAME=$(uname -s)
 export PLATFORMUNAME=$(uname -m)
@@ -62,6 +67,7 @@ else
     # makes the build's check-nexmon-setup-env guard fire with a clear message
     # instead of proceeding with an unset CC and failing obscurely later.
     cd "$OLD_PWD"
+    unset OLD_PWD
     return 1 2>/dev/null || exit 1
 fi
 
@@ -116,3 +122,4 @@ if [ -n "${NDK_ROOT:-}" ] && [ "$PLATFORMUNAME" = "aarch64" ]; then
 fi
 
 cd "$OLD_PWD"
+unset OLD_PWD

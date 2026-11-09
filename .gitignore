@@ -49,6 +49,7 @@ __pycache__/
 utilities/rawproxy/fuzz_radiotap_sanitize
 utilities/libnexio/libnexio_sanitize.*
 utilities/nexutil/nexutil
+utilities/dhdutil/dhdutil
 *.ko
 *.mod*
 Module.symvers

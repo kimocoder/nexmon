@@ -90,6 +90,7 @@ jobs:
           export PATH="/usr/lib/ccache:$PATH"
           export CCACHE_DIR="$HOME/.ccache"
           make -C utilities/nexutil NATIVE_BUILD=1
+          make -C utilities/dhdutil NATIVE_BUILD=1
           make -C buildtools/flash_patch_extractor
           make -C buildtools/ucode_extractor
           make -C buildtools/gcc-nexmon-plugin

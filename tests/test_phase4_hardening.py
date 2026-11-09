@@ -190,5 +190,33 @@ class TestPhase4MonitorModeScript(unittest.TestCase):
         self.assertIn('$(( ${flags:-0} & 1 ))', script_text)
 
 
+class TestPhase4P2PortabilityAndTelemetry(unittest.TestCase):
+    """Verify P2 improvements: udptunnel ethertype, statistics opt-out, and setup_env."""
+
+    def test_udptunnel_ethertype_htons(self):
+        udptunnel_c = ROOT / "patches/common/udptunnel.c"
+        text = udptunnel_c.read_text(errors="replace")
+        self.assertIn(".type = HTONS(0x0800)", text)
+        self.assertNotIn(".type = 0x0008", text)
+
+    def test_statistics_env_opt_out(self):
+        stats_mk = ROOT / "patches/common/statistics.mk"
+        text = stats_mk.read_text(errors="replace")
+        self.assertIn("NEXMON_DISABLE_STATISTICS", text)
+        self.assertIn("DO_NOT_TRACK", text)
+
+    def test_setup_env_zsh_and_cleanup(self):
+        setup_env = ROOT / "setup_env.sh"
+        text = setup_env.read_text(errors="replace")
+        self.assertIn("ZSH_VERSION", text)
+        self.assertIn("unset OLD_PWD", text)
+
+    def test_ucodeext_endian_independent_write(self):
+        ucodeext_c = ROOT / "buildtools/ucode_extractor/ucodeext.c"
+        text = ucodeext_c.read_text(errors="replace")
+        self.assertIn("unsigned char out[8];", text)
+        self.assertNotIn("fwrite(&a, sizeof(uint32_t)", text)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

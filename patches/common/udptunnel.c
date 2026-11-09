@@ -51,7 +51,7 @@ static const struct ethernet_ip_udp_header ethernet_ipv4_udp_header = {
   .ethernet = {
     .dst = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF },
     .src = { 'N', 'E', 'X', 'M', 'O', 'N' },
-    .type = 0x0008
+    .type = HTONS(0x0800)
   },
   .ip = {
     .version_ihl = 0x45,

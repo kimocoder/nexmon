@@ -85,6 +85,9 @@ class CSIPacket:
 
         # Precompute complex samples
         self.complex_csi = [complex(i, q) for i, q in raw_iq]
+        self._amplitudes: Optional[List[float]] = None
+        self._phases: Optional[List[float]] = None
+        self._numpy_array: Optional[Any] = None
 
     @property
     def bandwidth_mhz(self) -> int:
@@ -114,12 +117,16 @@ class CSIPacket:
     @property
     def amplitudes(self) -> List[float]:
         """Compute signal amplitudes (magnitudes) for each subcarrier."""
-        return [abs(c) for c in self.complex_csi]
+        if self._amplitudes is None:
+            self._amplitudes = [abs(c) for c in self.complex_csi]
+        return self._amplitudes
 
     @property
     def phases(self) -> List[float]:
         """Compute signal phases in radians for each subcarrier."""
-        return [cmath.phase(c) for c in self.complex_csi]
+        if self._phases is None:
+            self._phases = [cmath.phase(c) for c in self.complex_csi]
+        return self._phases
 
     def to_numpy(self) -> Any:
         """Convert CSI data to a 1D NumPy complex128 array.
@@ -128,7 +135,9 @@ class CSIPacket:
         """
         if not HAVE_NUMPY:
             raise ImportError("NumPy is required for to_numpy(). Install via: pip install numpy")
-        return np.array(self.complex_csi, dtype=np.complex128)
+        if self._numpy_array is None:
+            self._numpy_array = np.array(self.complex_csi, dtype=np.complex128)
+        return self._numpy_array
 
     def amplitudes_numpy(self) -> Any:
         """Convert amplitudes to a NumPy float64 array."""
@@ -144,6 +153,7 @@ class CSIPacket:
 
     def to_dict(self, include_iq: bool = True) -> Dict[str, Any]:
         """Convert packet metadata and subcarriers to a Python dictionary."""
+        amps = self.amplitudes
         d: Dict[str, Any] = {
             "timestamp": self.timestamp,
             "src_mac": self.src_mac,
@@ -154,7 +164,7 @@ class CSIPacket:
             "chip_id": f"0x{self.chip_id:04x}",
             "num_subcarriers": self.num_subcarriers,
             "bandwidth_mhz": self.bandwidth_mhz,
-            "avg_amplitude": (sum(self.amplitudes) / len(self.amplitudes)) if self.amplitudes else 0.0,
+            "avg_amplitude": (sum(amps) / len(amps)) if amps else 0.0,
         }
         if self.tsft_us is not None:
             d["tsft_us"] = self.tsft_us
@@ -162,7 +172,7 @@ class CSIPacket:
             d["ifindex"] = self.ifindex
         if include_iq:
             d["raw_iq"] = self.raw_iq
-            d["amplitudes"] = [round(a, 3) for a in self.amplitudes]
+            d["amplitudes"] = [round(a, 3) for a in amps]
             d["phases"] = [round(p, 4) for p in self.phases]
         return d
 
@@ -211,8 +221,8 @@ def parse_csi_payload(payload: bytes, offset: int = 0, timestamp: Optional[float
     if num_samples == 0:
         raw_iq: List[Tuple[int, int]] = []
     else:
-        # Unpack num_samples signed 16-bit integer pairs
-        unpacked = struct.unpack(f"<{2 * num_samples}h", iq_bytes[: 4 * num_samples])
+        # Unpack num_samples signed 16-bit integer pairs directly from buffer
+        unpacked = struct.unpack_from(f"<{2 * num_samples}h", iq_bytes)
         raw_iq = [(unpacked[i], unpacked[i + 1]) for i in range(0, len(unpacked), 2)]
 
     return CSIPacket(
