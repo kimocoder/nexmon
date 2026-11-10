@@ -2028,14 +2028,23 @@ static int brcmf_net_mon_open(struct net_device *ndev)
 		int tmp_err;
 
 		tmp_err = brcmf_fil_cmd_int_set(prim, BRCMF_C_SET_PM, 0);
-		if (tmp_err)
+		if (tmp_err) {
 			bphy_err(drvr, "BRCMF_C_SET_PM error (%d)\n", tmp_err);
+			drvr->nexmon_saved_pm_valid = false;
+		}
 		tmp_err = brcmf_fil_iovar_int_set(prim, "qtxpower", qtxpwr_max);
-		if (tmp_err)
-			bphy_err(drvr, "qtxpower set error (%d)\n", tmp_err);
+		if (tmp_err) {
+			if (tmp_err == -EBADE)
+				brcmf_dbg(INFO, "NEXMON: qtxpower set unsupported by firmware (%d)\n", tmp_err);
+			else
+				bphy_err(drvr, "qtxpower set error (%d)\n", tmp_err);
+			drvr->nexmon_saved_txpwr_valid = false;
+		}
 		tmp_err = brcmf_fil_iovar_int_set(prim, "mpc", 0);
-		if (tmp_err)
+		if (tmp_err) {
 			bphy_err(drvr, "mpc set error (%d)\n", tmp_err);
+			drvr->nexmon_saved_mpc_valid = false;
+		}
 		err = 0;
 	}
 
@@ -2085,25 +2094,41 @@ static int brcmf_net_mon_stop(struct net_device *ndev)
 	/* Restore the chip-global radio settings that brcmf_net_mon_open()
 	 * changed, so PM/TXPWR/mpc do not stay overridden on the STA after
 	 * monitor mode is torn down.  Each field is put back only if its
-	 * snapshot succeeded. */
+	 * snapshot succeeded and the setting was actually applied. */
 	{
+		int restore_err;
 
 		if (drvr->nexmon_saved_pm_valid) {
-			if (brcmf_fil_cmd_int_set(prim, BRCMF_C_SET_PM,
-						  drvr->nexmon_saved_pm))
-				bphy_err(drvr, "failed restoring PM\n");
+			restore_err = brcmf_fil_cmd_int_set(prim, BRCMF_C_SET_PM,
+							    drvr->nexmon_saved_pm);
+			if (restore_err) {
+				if (restore_err == -EBADE)
+					brcmf_dbg(INFO, "NEXMON: restoring PM unsupported (%d)\n", restore_err);
+				else
+					bphy_err(drvr, "failed restoring PM\n");
+			}
 			drvr->nexmon_saved_pm_valid = false;
 		}
 		if (drvr->nexmon_saved_txpwr_valid) {
-			if (brcmf_fil_iovar_int_set(prim, "qtxpower",
-						    drvr->nexmon_saved_txpwr))
-				bphy_err(drvr, "failed restoring qtxpower\n");
+			restore_err = brcmf_fil_iovar_int_set(prim, "qtxpower",
+							      drvr->nexmon_saved_txpwr);
+			if (restore_err) {
+				if (restore_err == -EBADE)
+					brcmf_dbg(INFO, "NEXMON: restoring qtxpower unsupported (%d)\n", restore_err);
+				else
+					bphy_err(drvr, "failed restoring qtxpower\n");
+			}
 			drvr->nexmon_saved_txpwr_valid = false;
 		}
 		if (drvr->nexmon_saved_mpc_valid) {
-			if (brcmf_fil_iovar_int_set(prim, "mpc",
-						    drvr->nexmon_saved_mpc))
-				bphy_err(drvr, "failed restoring mpc\n");
+			restore_err = brcmf_fil_iovar_int_set(prim, "mpc",
+							      drvr->nexmon_saved_mpc);
+			if (restore_err) {
+				if (restore_err == -EBADE)
+					brcmf_dbg(INFO, "NEXMON: restoring mpc unsupported (%d)\n", restore_err);
+				else
+					bphy_err(drvr, "failed restoring mpc\n");
+			}
 			drvr->nexmon_saved_mpc_valid = false;
 		}
 	}
