@@ -15,17 +15,38 @@ NATIVE_BUILD := $(filter $(shell uname -m),armv6l armv7l aarch64)
 ifdef NDK_NATIVE_HOST_ARCH
 NATIVE_BUILD :=
 endif
+ifdef APP_ABI
+NATIVE_BUILD :=
+endif
 endif
 
-all: libnexio.a
-
 ifeq ($(NATIVE_BUILD),)
-libnexio.a: Android.mk
-	$(NDK_ROOT)/ndk-build NDK_APPLICATION_MK=`pwd`/Application.mk NDK_APP_OUT=. TARGET_PLATFORM=android-21 $(if $(APP_ABI),APP_ABI=$(APP_ABI))
-	@if [ -f local/$(if $(APP_ABI),$(firstword $(APP_ABI)),arm64-v8a)/libnexio.a ]; then \
-		cp -f local/$(if $(APP_ABI),$(firstword $(APP_ABI)),arm64-v8a)/libnexio.a ./libnexio.a; \
+TARGET_ABI := $(if $(APP_ABI),$(if $(filter all,$(APP_ABI)),arm64-v8a,$(firstword $(APP_ABI))),arm64-v8a)
+TARGET_LIB := local/$(TARGET_ABI)/libnexio.a
+
+.PHONY: all
+
+all: $(TARGET_LIB) libnexio.a
+
+$(TARGET_LIB): Android.mk Application.mk libnexio.c libnexio.h
+	mkdir -p local
+	flock local $(NDK_ROOT)/ndk-build NDK_APPLICATION_MK=`pwd`/Application.mk NDK_APP_OUT=. TARGET_PLATFORM=android-21 $(if $(APP_ABI),APP_ABI=$(APP_ABI))
+	@if [ -f local/$(TARGET_ABI)/libnexio.a ]; then \
+		cp -f local/$(TARGET_ABI)/libnexio.a ./libnexio.a; \
 	elif [ -f local/armeabi-v7a/libnexio.a ]; then \
 		cp -f local/armeabi-v7a/libnexio.a ./libnexio.a; \
+	fi
+
+local/%/libnexio.a: Android.mk Application.mk libnexio.c libnexio.h
+	mkdir -p local
+	flock local $(NDK_ROOT)/ndk-build NDK_APPLICATION_MK=`pwd`/Application.mk NDK_APP_OUT=. TARGET_PLATFORM=android-21 APP_ABI=$*
+	@if [ -f $@ ]; then \
+		cp -f $@ ./libnexio.a; \
+	fi
+
+libnexio.a: $(TARGET_LIB)
+	@if [ -f $(TARGET_LIB) ]; then \
+		cp -f $(TARGET_LIB) ./libnexio.a; \
 	fi
 else
 libnexio.a: libnexio.c
@@ -44,7 +65,7 @@ sanitize: libnexio.c
 
 clean:
 	rm -Rf libs
-	rm -Rf local libnexio.o libnexio.a libnexio.so
+	rm -Rf local libnexio.o libnexio.a libnexio.so libnexio_sanitize.a libnexio_sanitize.o
 
 install:
 	@echo "nothing to install ..."

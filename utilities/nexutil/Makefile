@@ -10,16 +10,23 @@ NATIVE_BUILD := $(filter $(shell uname -m),armv6l armv7l aarch64)
 ifdef NDK_NATIVE_HOST_ARCH
 NATIVE_BUILD :=
 endif
+ifdef APP_ABI
+NATIVE_BUILD :=
+endif
+
+LIBNEXIO_ABI := $(if $(APP_ABI),$(if $(filter all,$(APP_ABI)),arm64-v8a,$(firstword $(APP_ABI))),arm64-v8a)
+LIBNEXIO := ../libnexio/local/$(LIBNEXIO_ABI)/libnexio.a
+LIBARGP := ../libargp/local/$(LIBNEXIO_ABI)/libargp.a
 
 ifeq ($(NATIVE_BUILD),)
-all: Android.mk nexutil.c FORCE
+all: $(LIBNEXIO) $(LIBARGP) Android.mk nexutil.c FORCE
 	$(NDK_ROOT)/ndk-build NDK_APPLICATION_MK=`pwd`/Application.mk NDK_APP_OUT=. TARGET_PLATFORM=android-21 GIT_VERSION=$(GIT_VERSION) $(if $(APP_ABI),APP_ABI=$(APP_ABI))
 else
 all: nexutil
 endif
 
 ifeq ($(NATIVE_BUILD),)
-libs/armeabi/nexutil libs/armeabi-v7a/nexutil libs/arm64-v8a/nexutil: Android.mk nexutil.c FORCE
+libs/armeabi/nexutil libs/armeabi-v7a/nexutil libs/arm64-v8a/nexutil: $(LIBNEXIO) $(LIBARGP) Android.mk nexutil.c FORCE
 	touch nexutil.c
 	$(NDK_ROOT)/ndk-build NDK_APPLICATION_MK=`pwd`/Application.mk NDK_APP_OUT=. TARGET_PLATFORM=android-21 GIT_VERSION=$(GIT_VERSION) $(if $(APP_ABI),APP_ABI=$(APP_ABI))
 else
@@ -31,14 +38,11 @@ else
 endif
 endif
 
-../libargp/local/armeabi/libargp.a: FORCE
-	cd ../libargp && $(MAKE) $(if $(APP_ABI),APP_ABI=$(APP_ABI))
+$(LIBARGP) ../libargp/local/armeabi/libargp.a: FORCE
+	$(MAKE) -C ../libargp $(if $(APP_ABI),APP_ABI=$(APP_ABI))
 
-../libnexio/local/armeabi/libnexio.a: FORCE
-	cd ../libnexio && $(MAKE) $(if $(APP_ABI),APP_ABI=$(APP_ABI))
-
-../libnexio/libnexio.a: FORCE
-	cd ../libnexio && $(MAKE) $(if $(APP_ABI),APP_ABI=$(APP_ABI))
+$(LIBNEXIO) ../libnexio/local/armeabi/libnexio.a ../libnexio/libnexio.a: FORCE
+	$(MAKE) -C ../libnexio $(if $(APP_ABI),APP_ABI=$(APP_ABI))
 
 ifeq ($(NATIVE_BUILD),)
 install: libs/armeabi/nexutil
