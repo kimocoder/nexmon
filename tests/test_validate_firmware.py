@@ -233,31 +233,70 @@ class TestFirmwareValidator(unittest.TestCase):
             errors = FirmwareValidator.check_wrapper_integrity(str(wrap_c), str(fw_h))
             self.assertTrue(any("parity mismatch" in e and "memcpy" in e for e in errors), errors)
 
+    @staticmethod
+    def _make_unbuilt_tree(root: Path) -> tuple[Path, Path]:
+        """Create a patch/firmware tree with no build artifacts under root."""
+        patch_dir = root / "patches" / "testchip" / "1_0" / "nexmon"
+        fw_dir = root / "firmwares" / "testchip" / "1_0"
+        patch_dir.mkdir(parents=True)
+        fw_dir.mkdir(parents=True)
+        (root / "setup_env.sh").write_text("", encoding="utf-8")
+        return patch_dir, fw_dir
+
     def test_validate_firmware_require_behavior(self):
         """--require fails on missing artifacts, but non-require cleanly skips (exit 0)."""
-        patch_dir = os.path.join(NEXMON_ROOT, "patches", "bcm43455c0", "7_45_265-28bca26-CY", "nexmon")
-        validator_skip = FirmwareValidator(patch_dir=patch_dir, quiet=True, require=False)
-        self.assertTrue(validator_skip.run_all())
+        with tempfile.TemporaryDirectory(prefix="nexmon-validator-") as tmp:
+            root = Path(tmp)
+            patch_dir, fw_dir = self._make_unbuilt_tree(root)
 
-        validator_fail = FirmwareValidator(patch_dir=patch_dir, quiet=True, require=True)
-        self.assertFalse(validator_fail.run_all())
-        self.assertEqual(validator_fail.failed, 1)
+            validator_skip = FirmwareValidator(
+                patch_dir=str(patch_dir),
+                fw_dir=str(fw_dir),
+                nexmon_root=str(root),
+                quiet=True,
+                require=False,
+            )
+            self.assertTrue(validator_skip.run_all())
+
+            validator_fail = FirmwareValidator(
+                patch_dir=str(patch_dir),
+                fw_dir=str(fw_dir),
+                nexmon_root=str(root),
+                quiet=True,
+                require=True,
+            )
+            self.assertFalse(validator_fail.run_all())
+            self.assertEqual(validator_fail.failed, 1)
 
     def test_validate_build_forwarding_stub(self):
         """validate_build.py forwarding stub behaves correctly with and without --require."""
         import subprocess
-        stub_path = os.path.join(
-            NEXMON_ROOT, "patches", "bcm43455c0", "7_45_265-28bca26-CY", "nexmon", "validate_build.py"
-        )
-        self.assertTrue(os.path.isfile(stub_path))
 
-        res_skip = subprocess.run([sys.executable, stub_path], capture_output=True, text=True)
-        self.assertEqual(res_skip.returncode, 0)
-        self.assertIn("skipping build validation", res_skip.stdout)
+        real_stub = Path(NEXMON_ROOT) / "patches" / "bcm43455c0" / "7_45_265-28bca26-CY" / "nexmon" / "validate_build.py"
+        real_validator = Path(NEXMON_ROOT) / "buildtools" / "scripts" / "validate_firmware.py"
+        self.assertTrue(real_stub.is_file())
+        self.assertTrue(real_validator.is_file())
 
-        res_req = subprocess.run([sys.executable, stub_path, "--require"], capture_output=True, text=True)
-        self.assertEqual(res_req.returncode, 1)
-        self.assertIn("FAILING build validation", res_req.stdout)
+        with tempfile.TemporaryDirectory(prefix="nexmon-stub-") as tmp:
+            root = Path(tmp)
+            patch_dir, _fw_dir = self._make_unbuilt_tree(root)
+            scripts_dir = root / "buildtools" / "scripts"
+            scripts_dir.mkdir(parents=True)
+            (scripts_dir / "validate_firmware.py").write_text(
+                real_validator.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            stub_path = patch_dir / "validate_build.py"
+            stub_path.write_text(real_stub.read_text(encoding="utf-8"), encoding="utf-8")
+
+            res_skip = subprocess.run([sys.executable, str(stub_path)], capture_output=True, text=True)
+            self.assertEqual(res_skip.returncode, 0, res_skip.stdout + res_skip.stderr)
+            self.assertIn("skipping build validation", res_skip.stdout)
+
+            res_req = subprocess.run(
+                [sys.executable, str(stub_path), "--require"], capture_output=True, text=True
+            )
+            self.assertEqual(res_req.returncode, 1, res_req.stdout + res_req.stderr)
+            self.assertIn("FAILING build validation", res_req.stdout)
 
     def test_wrapper_fw_ver_all_conflict_detected(self):
         """Conflicting FW_VER_ALL and specific version on same chip must be caught."""
