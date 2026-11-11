@@ -4,3 +4,4 @@ iw
 .config
 iw.8.gz
 *-stamp
+nl80211-commands.inc.tmp
