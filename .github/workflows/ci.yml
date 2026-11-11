@@ -118,7 +118,25 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
+      # The ubuntu-24.04 image already ships the Android SDK, but its
+      # cmdline-tools are not guaranteed on PATH. Wire them up directly:
+      # setup-android@v3 still asks sdkmanager for the long-removed "tools"
+      # package, which fails the whole job before any project step runs.
+      - name: Set up preinstalled Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          sdkmanager_bin=$(find "$sdk_root/cmdline-tools" -maxdepth 4 -type f -name sdkmanager | sort -V | tail -n 1)
+          if [ -z "$sdkmanager_bin" ]; then
+            echo "sdkmanager not found under $sdk_root/cmdline-tools" >&2
+            exit 1
+          fi
+          echo "ANDROID_SDK_ROOT=$sdk_root" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$sdk_root" >> "$GITHUB_ENV"
+          echo "$(dirname "$sdkmanager_bin")" >> "$GITHUB_PATH"
+          echo "$sdk_root/platform-tools" >> "$GITHUB_PATH"
+          yes | "$sdkmanager_bin" --licenses > /dev/null 2>&1 || true
 
       - name: Install Android SDK platform and build tools
         run: sdkmanager "platforms;android-28" "build-tools;30.0.3"
@@ -141,7 +159,25 @@ jobs:
         with:
           python-version: '3.11'
 
-      - uses: android-actions/setup-android@v3
+      # The ubuntu-24.04 image already ships the Android SDK, but its
+      # cmdline-tools are not guaranteed on PATH. Wire them up directly:
+      # setup-android@v3 still asks sdkmanager for the long-removed "tools"
+      # package, which fails the whole job before any project step runs.
+      - name: Set up preinstalled Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          sdkmanager_bin=$(find "$sdk_root/cmdline-tools" -maxdepth 4 -type f -name sdkmanager | sort -V | tail -n 1)
+          if [ -z "$sdkmanager_bin" ]; then
+            echo "sdkmanager not found under $sdk_root/cmdline-tools" >&2
+            exit 1
+          fi
+          echo "ANDROID_SDK_ROOT=$sdk_root" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$sdk_root" >> "$GITHUB_ENV"
+          echo "$(dirname "$sdkmanager_bin")" >> "$GITHUB_PATH"
+          echo "$sdk_root/platform-tools" >> "$GITHUB_PATH"
+          yes | "$sdkmanager_bin" --licenses > /dev/null 2>&1 || true
 
       # The bundled firmware cross-compiler (x86) and the host tools it drives
       # are 32-bit executables.
@@ -204,7 +240,25 @@ jobs:
         with:
           fetch-depth: 1
 
-      - uses: android-actions/setup-android@v3
+      # The ubuntu-24.04 image already ships the Android SDK, but its
+      # cmdline-tools are not guaranteed on PATH. Wire them up directly:
+      # setup-android@v3 still asks sdkmanager for the long-removed "tools"
+      # package, which fails the whole job before any project step runs.
+      - name: Set up preinstalled Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          sdkmanager_bin=$(find "$sdk_root/cmdline-tools" -maxdepth 4 -type f -name sdkmanager | sort -V | tail -n 1)
+          if [ -z "$sdkmanager_bin" ]; then
+            echo "sdkmanager not found under $sdk_root/cmdline-tools" >&2
+            exit 1
+          fi
+          echo "ANDROID_SDK_ROOT=$sdk_root" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$sdk_root" >> "$GITHUB_ENV"
+          echo "$(dirname "$sdkmanager_bin")" >> "$GITHUB_PATH"
+          echo "$sdk_root/platform-tools" >> "$GITHUB_PATH"
+          yes | "$sdkmanager_bin" --licenses > /dev/null 2>&1 || true
 
       - name: Install NDK
         run: sdkmanager "ndk;30.0.16248370"
