@@ -185,7 +185,9 @@ jobs:
         run: |
           sudo dpkg --add-architecture i386 || true
           sudo apt-get update
-          sudo apt-get install -y gcc g++-multilib libc6-i386 libgmp-dev libgmp-dev:i386 make gawk qpdf xxd
+          # libfl-dev provides the libl.a that the b43 assembler links with -ll;
+          # the runner image has flex but not this package.
+          sudo apt-get install -y gcc g++-multilib libc6-i386 libgmp-dev libgmp-dev:i386 make gawk qpdf xxd flex bison libfl-dev
           sdkmanager "ndk;30.0.16248370"
 
       - name: Build host tools and firmware assets
@@ -287,13 +289,16 @@ jobs:
           target: default
           arch: x86
           disable-animations: true
-          script: |
-            buildtools/scripts/android_smoke_test.sh \
-              utilities/nexutil/libs/x86/nexutil \
-              utilities/socat/libs/x86/socat \
-              utilities/netcat/libs/x86/nc \
-              utilities/iw/libs/x86/iw \
-              utilities/dhdutil/libs/x86/dhdutil
+          # The action runs each line of `script` as its own `sh -c`, so the
+          # invocation must fold to a single line; backslash continuations
+          # would be passed to the script as literal arguments.
+          script: >
+            buildtools/scripts/android_smoke_test.sh
+            utilities/nexutil/libs/x86/nexutil
+            utilities/socat/libs/x86/socat
+            utilities/netcat/libs/x86/nc
+            utilities/iw/libs/x86/iw
+            utilities/dhdutil/libs/x86/dhdutil
 
   firmware:
     name: Build & Validate BCM43455c0 Firmware
