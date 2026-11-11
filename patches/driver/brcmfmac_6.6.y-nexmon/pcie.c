@@ -272,6 +272,7 @@ struct brcmf_pciedev_info {
 	struct brcmf_pcie_shared_info shared;
 	wait_queue_head_t mbdata_resp_wait;
 	bool mbdata_completed;
+	bool d3_ack_timeout;
 	bool irq_allocated;
 	bool wowl_enabled;
 	u8 dma_idx_sz;
@@ -1431,7 +1432,7 @@ static int brcmf_pcie_get_memdump(struct device *dev, void *data, size_t len)
 	brcmf_dbg(PCIE, "dump at 0x%08X: len=%zu\n", devinfo->ci->rambase, len);
 	if (devinfo->ci->rambase > devinfo->tcm_size ||
 	    len > devinfo->tcm_size - devinfo->ci->rambase) {
-		brcmf_err("memdump 0x%08X+%zu exceeds TCM window %llu\n",
+		brcmf_err(bus_if, "memdump 0x%08X+%zu exceeds TCM window %llu\n",
 			  devinfo->ci->rambase, len,
 			  (unsigned long long)devinfo->tcm_size);
 		return -EINVAL;
@@ -2082,6 +2083,11 @@ static int brcmf_pcie_pm_enter_D3(struct device *dev)
 		}
 
 		brcmf_dbg(PCIE, "No D3 ACK, continuing to power the device off\n");
+
+		/* Remember that firmware is unresponsive so resume skips the
+		 * hot-resume path and does a full remove + re-probe.
+		 */
+		devinfo->d3_ack_timeout = true;
 	}
 
 	devinfo->state = BRCMFMAC_PCIE_STATE_DOWN;
@@ -2102,6 +2108,17 @@ static int brcmf_pcie_pm_leave_D3(struct device *dev)
 	bus = dev_get_drvdata(dev);
 	devinfo = bus->bus_priv.pcie->devinfo;
 	brcmf_dbg(PCIE, "Enter, dev=%p, bus=%p\n", dev, bus);
+
+	/* Firmware that failed to ACK D3_INFORM at suspend cannot be
+	 * trusted even if its registers still read back sanely: it may
+	 * keep the association up while the data path is dead. Skip the
+	 * hot-resume path and force a full re-probe to reload it.
+	 */
+	if (devinfo->d3_ack_timeout) {
+		devinfo->d3_ack_timeout = false;
+		brcmf_err(bus, "Firmware was unresponsive at suspend, reloading\n");
+		goto cleanup;
+	}
 
 	/* Check if device is still up and running, if so we are ready */
 	if (brcmf_pcie_read_reg32(devinfo, BRCMF_PCIE_PCIE2REG_INTMASK) != 0) {

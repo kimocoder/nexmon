@@ -264,6 +264,7 @@ struct brcmf_pcie_core_info {
 struct brcmf_pciedev_info {
 	enum brcmf_pcie_state state;
 	resource_size_t tcm_size;
+	bool in_pci_recovery;
 	bool in_irq;
 	struct pci_dev *pdev;
 	char fw_name[BRCMF_FW_NAME_LEN];
@@ -277,6 +278,7 @@ struct brcmf_pciedev_info {
 	struct brcmf_pcie_shared_info shared;
 	wait_queue_head_t mbdata_resp_wait;
 	bool mbdata_completed;
+	bool d3_ack_timeout;
 	bool irq_allocated;
 	bool wowl_enabled;
 	u8 dma_idx_sz;
@@ -1436,7 +1438,7 @@ static int brcmf_pcie_get_memdump(struct device *dev, void *data, size_t len)
 	brcmf_dbg(PCIE, "dump at 0x%08X: len=%zu\n", devinfo->ci->rambase, len);
 	if (devinfo->ci->rambase > devinfo->tcm_size ||
 	    len > devinfo->tcm_size - devinfo->ci->rambase) {
-		brcmf_err("memdump 0x%08X+%zu exceeds TCM window %llu\n",
+		brcmf_err(bus_if, "memdump 0x%08X+%zu exceeds TCM window %llu\n",
 			  devinfo->ci->rambase, len,
 			  (unsigned long long)devinfo->tcm_size);
 		return -EINVAL;
@@ -1684,6 +1686,7 @@ static int brcmf_pcie_get_resource(struct brcmf_pciedev_info *devinfo)
 	}
 
 	pci_set_master(pdev);
+	pci_save_state(pdev);
 
 	/* Bar-0 mapped address */
 	bar0_addr = pci_resource_start(pdev, 0);
@@ -1888,6 +1891,11 @@ static void brcmf_pcie_setup(struct device *dev, int ret,
 	return;
 
 fail:
+	/* PCIe error recovery is in progress and re-probes the device once
+	 * the link is back; releasing the driver here would race with it.
+	 */
+	if (READ_ONCE(devinfo->in_pci_recovery))
+		return;
 	device_release_driver(dev);
 }
 
@@ -2090,6 +2098,11 @@ static int brcmf_pcie_pm_enter_D3(struct device *dev)
 		}
 
 		brcmf_dbg(PCIE, "No D3 ACK, continuing to power the device off\n");
+
+		/* Remember that firmware is unresponsive so resume skips the
+		 * hot-resume path and does a full remove + re-probe.
+		 */
+		devinfo->d3_ack_timeout = true;
 	}
 
 	devinfo->state = BRCMFMAC_PCIE_STATE_DOWN;
@@ -2110,6 +2123,17 @@ static int brcmf_pcie_pm_leave_D3(struct device *dev)
 	bus = dev_get_drvdata(dev);
 	devinfo = bus->bus_priv.pcie->devinfo;
 	brcmf_dbg(PCIE, "Enter, dev=%p, bus=%p\n", dev, bus);
+
+	/* Firmware that failed to ACK D3_INFORM at suspend cannot be
+	 * trusted even if its registers still read back sanely: it may
+	 * keep the association up while the data path is dead. Skip the
+	 * hot-resume path and force a full re-probe to reload it.
+	 */
+	if (devinfo->d3_ack_timeout) {
+		devinfo->d3_ack_timeout = false;
+		brcmf_err(bus, "Firmware was unresponsive at suspend, reloading\n");
+		goto cleanup;
+	}
 
 	/* Check if device is still up and running, if so we are ready */
 	if (brcmf_pcie_read_reg32(devinfo, BRCMF_PCIE_PCIE2REG_INTMASK) != 0) {
@@ -2185,6 +2209,111 @@ static const struct pci_device_id brcmf_pcie_devid_table[] = {
 MODULE_DEVICE_TABLE(pci, brcmf_pcie_devid_table);
 
 
+static pci_ers_result_t brcmf_pcie_error_detected(struct pci_dev *pdev,
+						  pci_channel_state_t state)
+{
+	struct brcmf_bus *bus = dev_get_drvdata(&pdev->dev);
+	struct brcmf_pciedev_info *devinfo;
+
+	if (!bus)
+		return PCI_ERS_RESULT_DISCONNECT;
+	if (state == pci_channel_io_perm_failure)
+		return PCI_ERS_RESULT_DISCONNECT;
+	if (state == pci_channel_io_normal)
+		return PCI_ERS_RESULT_CAN_RECOVER;
+
+	devinfo = bus->bus_priv.pcie->devinfo;
+	brcmf_err(bus, "PCIe link frozen, resetting\n");
+	WRITE_ONCE(devinfo->in_pci_recovery, true);
+	devinfo->state = BRCMFMAC_PCIE_STATE_DOWN;
+	brcmf_bus_cancel_reset_work(bus);
+
+	return PCI_ERS_RESULT_NEED_RESET;
+}
+
+static pci_ers_result_t brcmf_pcie_slot_reset(struct pci_dev *pdev)
+{
+	struct brcmf_bus *bus = dev_get_drvdata(&pdev->dev);
+	struct brcmf_pciedev_info *devinfo;
+	u16 vendor;
+
+	if (!bus)
+		return PCI_ERS_RESULT_DISCONNECT;
+	devinfo = bus->bus_priv.pcie->devinfo;
+
+	pci_restore_state(pdev);
+	pci_save_state(pdev);
+	pci_set_master(pdev);
+
+	pci_read_config_word(pdev, PCI_VENDOR_ID, &vendor);
+	if (vendor != pdev->vendor)
+		return PCI_ERS_RESULT_DISCONNECT;
+
+	/* Config space can answer while the backplane is wedged; reloading
+	 * firmware into such a card stalls the CPU on every MMIO read.
+	 */
+	if (devinfo->ci) {
+		u32 chipid;
+
+		brcmf_pcie_select_core(devinfo, BCMA_CORE_CHIPCOMMON);
+		chipid = READCC32(devinfo, chipid);
+		brcmf_pcie_select_core(devinfo, BCMA_CORE_PCIE2);
+		if (chipid == 0xffffffff) {
+			brcmf_err(bus, "card not responding after link reset\n");
+			return PCI_ERS_RESULT_DISCONNECT;
+		}
+	}
+
+	return PCI_ERS_RESULT_RECOVERED;
+}
+
+static struct workqueue_struct *brcmf_pcie_err_wq;
+
+struct brcmf_pcie_reprobe {
+	struct work_struct work;
+	struct pci_dev *pdev;
+};
+
+static void brcmf_pcie_reprobe_worker(struct work_struct *work)
+{
+	struct brcmf_pcie_reprobe *rp =
+		container_of(work, struct brcmf_pcie_reprobe, work);
+	int err;
+
+	err = device_reprobe(&rp->pdev->dev);
+	if (err)
+		pci_err(rp->pdev, "re-probe after PCIe error failed: %d\n", err);
+	pci_dev_put(rp->pdev);
+	kfree(rp);
+}
+
+/* A link reset returns the chip to its power-on state, which only a full
+ * probe initialises correctly. The re-probe frees all driver data, so it
+ * runs from a work item that holds nothing but the PCI device.
+ */
+static void brcmf_pcie_resume_from_error(struct pci_dev *pdev)
+{
+	struct brcmf_bus *bus = dev_get_drvdata(&pdev->dev);
+	struct brcmf_pcie_reprobe *rp;
+
+	if (!bus || !READ_ONCE(bus->bus_priv.pcie->devinfo->in_pci_recovery))
+		return;
+
+	rp = kzalloc(sizeof(*rp), GFP_KERNEL);
+	if (!rp)
+		return;
+	brcmf_err(bus, "PCIe link recovered, re-probing\n");
+	INIT_WORK(&rp->work, brcmf_pcie_reprobe_worker);
+	rp->pdev = pci_dev_get(pdev);
+	queue_work(brcmf_pcie_err_wq, &rp->work);
+}
+
+static const struct pci_error_handlers brcmf_pcie_err_handler = {
+	.error_detected = brcmf_pcie_error_detected,
+	.slot_reset = brcmf_pcie_slot_reset,
+	.resume = brcmf_pcie_resume_from_error,
+};
+
 static struct pci_driver brcmf_pciedrvr = {
 #if LINUX_VERSION_CODE < KERNEL_VERSION(6,11,2)
 	.node = {},
@@ -2193,6 +2322,7 @@ static struct pci_driver brcmf_pciedrvr = {
 	.id_table = brcmf_pcie_devid_table,
 	.probe = brcmf_pcie_probe,
 	.remove = brcmf_pcie_remove,
+	.err_handler = &brcmf_pcie_err_handler,
 #ifdef CONFIG_PM
 	.driver.pm = &brcmf_pciedrvr_pm,
 #endif
@@ -2202,8 +2332,17 @@ static struct pci_driver brcmf_pciedrvr = {
 
 int brcmf_pcie_register(void)
 {
+	int err;
+
 	brcmf_dbg(PCIE, "Enter\n");
-	return pci_register_driver(&brcmf_pciedrvr);
+	brcmf_pcie_err_wq = alloc_workqueue("brcmf_pcie_err", 0, 0);
+	if (!brcmf_pcie_err_wq)
+		return -ENOMEM;
+
+	err = pci_register_driver(&brcmf_pciedrvr);
+	if (err)
+		destroy_workqueue(brcmf_pcie_err_wq);
+	return err;
 }
 
 
@@ -2211,4 +2350,8 @@ void brcmf_pcie_exit(void)
 {
 	brcmf_dbg(PCIE, "Enter\n");
 	pci_unregister_driver(&brcmf_pciedrvr);
+	/* Unregistered first so no new re-probe can be queued; this drains
+	 * a pending one before the module text goes away.
+	 */
+	destroy_workqueue(brcmf_pcie_err_wq);
 }

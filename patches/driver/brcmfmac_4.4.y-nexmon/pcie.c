@@ -270,6 +270,7 @@ struct brcmf_pciedev_info {
 	void (*ringbell)(struct brcmf_pciedev_info *devinfo);
 	wait_queue_head_t mbdata_resp_wait;
 	bool mbdata_completed;
+	bool d3_ack_timeout;
 	bool irq_allocated;
 	bool wowl_enabled;
 	u8 dma_idx_sz;
@@ -2044,6 +2045,11 @@ static int brcmf_pcie_suspend(struct pci_dev *pdev, pm_message_t state)
 		}
 
 		brcmf_dbg(PCIE, "No D3 ACK, continuing to power the device off\n");
+
+		/* Remember that firmware is unresponsive so resume skips the
+		 * hot-resume path and does a full remove + re-probe.
+		 */
+		devinfo->d3_ack_timeout = true;
 	}
 	brcmf_pcie_send_mb_data(devinfo, BRCMF_H2D_HOST_D0_INFORM_IN_USE);
 
@@ -2081,6 +2087,11 @@ static int brcmf_pcie_resume(struct pci_dev *pdev)
 	/* Check if device is still up and running, if so we are ready */
 	if (bus) {
 		devinfo = bus->bus_priv.pcie->devinfo;
+		if (devinfo->d3_ack_timeout) {
+			devinfo->d3_ack_timeout = false;
+			brcmf_err("Firmware was unresponsive at suspend, reloading\n");
+			goto cleanup;
+		}
 		if (brcmf_pcie_read_reg32(devinfo,
 					  BRCMF_PCIE_PCIE2REG_INTMASK) != 0) {
 			if (brcmf_pcie_send_mb_data(devinfo,

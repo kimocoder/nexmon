@@ -24,6 +24,7 @@
 #include <net/cfg80211.h>
 #include <net/netlink.h>
 
+#include <brcm_hw_ids.h>
 #include <brcmu_utils.h>
 #include <defs.h>
 #include <brcmu_wifi.h>
@@ -42,6 +43,8 @@
 #include "common.h"
 
 #define BRCMF_SCAN_IE_LEN_MAX		2048
+#define BRCMF_PS_MAX_TIMEOUT_MS		2000
+#define BRCMF_PS_DEFAULT_TIMEOUT_MS	200
 #define BRCMF_PNO_VERSION		2
 #define BRCMF_PNO_TIME			30
 #define BRCMF_PNO_REPEAT		4
@@ -2635,7 +2638,13 @@ brcmf_cfg80211_set_power_mgmt(struct wiphy *wiphy, struct net_device *ndev,
 		else
 			brcmf_err("error (%d)\n", err);
 	}
-	brcmf_fil_iovar_int_set(ifp, "pm2_sleep_ret", 2000); /* 2000ms - the maximum */
+	/* cfg80211 passes -1 when userspace asks for no particular timeout */
+	if (timeout < 0)
+		timeout = BRCMF_PS_DEFAULT_TIMEOUT_MS;
+	err = brcmf_fil_iovar_int_set(ifp, "pm2_sleep_ret",
+				      min_t(u32, timeout, BRCMF_PS_MAX_TIMEOUT_MS));
+	if (err)
+		brcmf_err("Unable to set pm timeout, (%d)\n", err);
 done:
 	brcmf_dbg(TRACE, "Exit\n");
 	return err;
@@ -4103,6 +4112,34 @@ brcmf_config_ap_mgmt_ie(struct brcmf_cfg80211_vif *vif,
 	return err;
 }
 
+#define BRCMF_VHT_FEATURES_2G_ENAB	BIT(0)
+
+static void brcmf_cfg80211_4366_2g_vht(struct brcmf_if *ifp,
+				       const struct cfg80211_chan_def *chandef)
+{
+	u32 chip = ifp->drvr->bus_if->chip;
+	u32 val, want;
+	s32 err;
+
+	if (chandef->chan->band != NL80211_BAND_2GHZ)
+		return;
+	if (chip != BRCM_CC_4366_CHIP_ID)
+		return;
+	err = brcmf_fil_iovar_int_get(ifp, "vht_features", &val);
+	if (err < 0) {
+		brcmf_dbg(INFO, "vht_features get failed (%d)\n", err);
+		return;
+	}
+	if (val & BRCMF_VHT_FEATURES_2G_ENAB)
+		return;
+	want = val | BRCMF_VHT_FEATURES_2G_ENAB;
+	err = brcmf_fil_iovar_int_set(ifp, "vht_features", want);
+	if (err < 0)
+		brcmf_err("vht_features 2.4 GHz enable failed (%d)\n", err);
+	else
+		brcmf_dbg(INFO, "vht_features 0x%x -> 0x%x\n", val, want);
+}
+
 static s32
 brcmf_cfg80211_start_ap(struct wiphy *wiphy, struct net_device *ndev,
 			struct cfg80211_ap_settings *settings)
@@ -4259,6 +4296,8 @@ brcmf_cfg80211_start_ap(struct wiphy *wiphy, struct net_device *ndev,
 			brcmf_err("setting AP mode failed %d\n", err);
 			goto exit;
 		}
+		if (!mbss)
+			brcmf_cfg80211_4366_2g_vht(ifp, &settings->chandef);
 		err = brcmf_fil_cmd_int_set(ifp, BRCMF_C_UP, 1);
 		if (err < 0) {
 			brcmf_err("BRCMF_C_UP error (%d)\n", err);
