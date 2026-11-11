@@ -477,6 +477,9 @@ static int brcmf_sdiod_buffrw(struct brcmf_sdio_dev *sdiodev, uint fn,
 	req_sz = pkt->len + 3;
 	req_sz &= (uint)~3;
 
+	if (write && req_sz > pkt->len)
+		memset(pkt->data + pkt->len, 0, req_sz - pkt->len);
+
 	if (write)
 		err = sdio_memcpy_toio(sdiodev->func[fn], addr,
 				       ((u8 *)(pkt->data)), req_sz);

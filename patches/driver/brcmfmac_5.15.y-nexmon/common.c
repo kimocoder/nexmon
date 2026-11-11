@@ -8,6 +8,7 @@
 #include <linux/netdevice.h>
 #include <linux/module.h>
 #include <linux/firmware.h>
+#include <brcm_hw_ids.h>
 #include <brcmu_wifi.h>
 #include <brcmu_utils.h>
 #include "core.h"
@@ -344,8 +345,12 @@ int brcmf_c_preinit_dcmds(struct brcmf_if *ifp)
 		goto done;
 	}
 
-	/* Enable tx beamforming, errors can be ignored (not supported) */
-	(void)brcmf_fil_iovar_int_set(ifp, "txbf", 1);
+	/* Enable tx beamforming, errors can be ignored (not supported).
+	 * BCM4364 firmware enables it by default and then transmits a single
+	 * beamformed stream instead of two, halving its uplink throughput.
+	 */
+	(void)brcmf_fil_iovar_int_set(ifp, "txbf",
+				      drvr->bus_if->chip != BRCM_CC_4364_CHIP_ID);
 done:
 	return err;
 }

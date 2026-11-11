@@ -16,6 +16,7 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/firmware.h>
+#include <linux/pci_ids.h>
 #include <linux/pci.h>
 #include <linux/vmalloc.h>
 #include <linux/delay.h>
@@ -242,6 +243,7 @@ struct brcmf_pcie_core_info {
 
 struct brcmf_pciedev_info {
 	enum brcmf_pcie_state state;
+	resource_size_t tcm_size;
 	bool in_irq;
 	struct pci_dev *pdev;
 	char fw_name[BRCMF_FW_NAME_LEN];
@@ -510,6 +512,9 @@ brcmf_pcie_copy_dev_tomem(struct brcmf_pciedev_info *devinfo, u32 mem_offset,
 }
 
 
+#define READCC32(devinfo, reg) brcmf_pcie_read_reg32(devinfo, \
+		CHIPCREGOFFS(reg))
+
 #define WRITECC32(devinfo, reg, value) brcmf_pcie_write_reg32(devinfo, \
 		CHIPCREGOFFS(reg), value)
 
@@ -611,9 +616,49 @@ static void brcmf_pcie_attach(struct brcmf_pciedev_info *devinfo)
 }
 
 
+/* ChipCommon chipcontrol bit selecting the discrete FEM control pin mode */
+#define BRCMF_CC_CHIPCTL_4360_DISCRETE_FEMCTRL_MODE	BIT(4)
+
+/* On the Apple boards below, 5 GHz on the BCM43602 only works with the
+ * discrete FEM control pin mode selected in the ChipCommon chipcontrol
+ * register. The bit is set after a reboot, but a power-on reset of the chip
+ * (e.g. over S3) clears it and the firmware does not set it again. Restore
+ * it before the firmware is started. Other Apple boards may not use this
+ * mode (a MacBookPro11,5 boots with the bit clear), so they are left alone.
+ */
+static void brcmf_pcie_43602_apple_femctrl(struct brcmf_pciedev_info *devinfo)
+{
+	const struct pci_dev *pdev = devinfo->pdev;
+	u32 val;
+
+	if (pdev->subsystem_vendor != PCI_VENDOR_ID_APPLE)
+		return;
+
+	switch (pdev->subsystem_device) {
+	case 0x0157:	/* MacBookPro14,2, possibly others */
+	case 0x015a:	/* MacBookPro13,3 */
+	case 0x0173:	/* MacBookPro14,3 */
+		break;
+	default:
+		return;
+	}
+
+	brcmf_pcie_select_core(devinfo, BCMA_CORE_CHIPCOMMON);
+	val = READCC32(devinfo, chipcontrol);
+	if (val & BRCMF_CC_CHIPCTL_4360_DISCRETE_FEMCTRL_MODE)
+		return;
+
+	brcmf_dbg(PCIE, "chipcontrol 0x%08x, setting discrete FEM control mode\n",
+		  val);
+	WRITECC32(devinfo, chipcontrol,
+		  val | BRCMF_CC_CHIPCTL_4360_DISCRETE_FEMCTRL_MODE);
+}
+
 static int brcmf_pcie_enter_download_state(struct brcmf_pciedev_info *devinfo)
 {
 	if (devinfo->ci->chip == BRCM_CC_43602_CHIP_ID) {
+		brcmf_pcie_43602_apple_femctrl(devinfo);
+
 		brcmf_pcie_select_core(devinfo, BCMA_CORE_ARM_CR4);
 		brcmf_pcie_write_reg32(devinfo, BRCMF_PCIE_ARMCR4REG_BANKIDX,
 				       5);
@@ -742,6 +787,14 @@ static void brcmf_pcie_bus_console_read(struct brcmf_pciedev_info *devinfo)
 	console = &devinfo->shared.console;
 	addr = console->base_addr + BRCMF_CONSOLE_WRITEIDX_OFFSET;
 	newidx = brcmf_pcie_read_tcm32(devinfo, addr);
+	/* A dead device reads back as all ones, an index read_idx never
+	 * reaches; without this check the loop below never terminates.
+	 */
+	if (newidx >= console->bufsize) {
+		brcmf_dbg(PCIE, "invalid console write index %u (bufsize %u)\n",
+			  newidx, console->bufsize);
+		return;
+	}
 	while (newidx != console->read_idx) {
 		addr = console->buf_addr + console->read_idx;
 		ch = brcmf_pcie_read_tcm8(devinfo, addr);
@@ -1346,6 +1399,13 @@ static int brcmf_pcie_get_memdump(struct device *dev, void *data, size_t len)
 	struct brcmf_pciedev_info *devinfo = buspub->devinfo;
 
 	brcmf_dbg(PCIE, "dump at 0x%08X: len=%zu\n", devinfo->ci->rambase, len);
+	if (devinfo->ci->rambase > devinfo->tcm_size ||
+	    len > devinfo->tcm_size - devinfo->ci->rambase) {
+		brcmf_err("memdump 0x%08X+%zu exceeds TCM window %llu\n",
+			  devinfo->ci->rambase, len,
+			  (unsigned long long)devinfo->tcm_size);
+		return -EINVAL;
+	}
 	brcmf_pcie_copy_dev_tomem(devinfo, devinfo->ci->rambase, data, len);
 	return 0;
 }
@@ -1554,6 +1614,7 @@ static int brcmf_pcie_get_resource(struct brcmf_pciedev_info *devinfo)
 
 	devinfo->regs = ioremap_nocache(bar0_addr, BRCMF_PCIE_REG_MAP_SIZE);
 	devinfo->tcm = ioremap_nocache(bar1_addr, bar1_size);
+	devinfo->tcm_size = bar1_size;
 
 	if (!devinfo->regs || !devinfo->tcm) {
 		brcmf_err("ioremap() failed (%p,%p)\n", devinfo->regs,

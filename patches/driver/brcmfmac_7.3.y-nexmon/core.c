@@ -959,6 +959,15 @@ void brcmf_configure_arp_nd_offload(struct brcmf_if *ifp, bool enable)
 		return;
 	}
 
+	/* With ND offload on while awake, the Apple firmware for the BCM4364
+	 * makes IPv6 downloads drop to low rates. macOS runs ARP and ND
+	 * offload only in sleep, keep both off on this chip.
+	 */
+	if (enable && ifp->drvr->bus_if->chip == BRCM_CC_4364_CHIP_ID) {
+		brcmf_dbg(TRACE, "Skip ARP/ND offload enable on BCM4364\n");
+		enable = false;
+	}
+
 	if (enable)
 		mode = BRCMF_ARP_OL_AGENT | BRCMF_ARP_OL_PEER_AUTO_REPLY;
 	else
@@ -2586,7 +2595,7 @@ void brcmf_bus_cancel_reset_work(struct brcmf_bus *bus_if)
 {
 	mutex_lock(&bus_if->bus_reset_lock);
 	bus_if->removing = true;
-	if (bus_if->drvr)
+	if (bus_if->drvr && bus_if->drvr->bus_reset.func)
 		cancel_work_sync(&bus_if->drvr->bus_reset);
 	mutex_unlock(&bus_if->bus_reset_lock);
 }
@@ -2873,7 +2882,7 @@ void brcmf_dev_coredump(struct device *dev)
 		brcmf_dbg(TRACE, "failed to create coredump\n");
 }
 
-void brcmf_fw_crashed(struct device *dev)
+void brcmf_fw_crashed(struct device *dev, bool coredump)
 {
 	struct brcmf_bus *bus_if = dev_get_drvdata(dev);
 	struct brcmf_pub *drvr;
@@ -2890,7 +2899,8 @@ void brcmf_fw_crashed(struct device *dev)
 
 	bphy_err(drvr, "Firmware has halted or crashed\n");
 
-	brcmf_dev_coredump(dev);
+	if (coredump)
+		brcmf_dev_coredump(dev);
 
 	brcmf_bus_schedule_reset(bus_if);
 }

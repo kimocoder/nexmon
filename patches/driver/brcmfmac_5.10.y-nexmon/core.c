@@ -1636,14 +1636,15 @@ void brcmf_dev_coredump(struct device *dev)
 		brcmf_dbg(TRACE, "failed to create coredump\n");
 }
 
-void brcmf_fw_crashed(struct device *dev)
+void brcmf_fw_crashed(struct device *dev, bool coredump)
 {
 	struct brcmf_bus *bus_if = dev_get_drvdata(dev);
 	struct brcmf_pub *drvr = bus_if->drvr;
 
 	bphy_err(drvr, "Firmware has halted or crashed\n");
 
-	brcmf_dev_coredump(dev);
+	if (coredump)
+		brcmf_dev_coredump(dev);
 
 	schedule_work(&drvr->bus_reset);
 }
