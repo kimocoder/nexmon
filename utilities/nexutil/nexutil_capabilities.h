@@ -7,8 +7,11 @@
 
 struct nexio;
 
+#ifndef NEXUTIL_IOCTL_FN_DEFINED
+#define NEXUTIL_IOCTL_FN_DEFINED
 /* Injectable so the no-capability path can be tested without a device. */
 typedef int (*nexutil_ioctl_fn)(struct nexio *nexio, int cmd, void *buf, int len, bool set);
+#endif
 
 /*
  * Query NEX_GET_CAPABILITIES and print the decoded bits to out.

@@ -5,6 +5,7 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := \
 	nexutil.c \
 	nexutil_capabilities.c \
+	nexutil_wlcnt.c \
 	bcmutils.c \
 	bcmwifi_channels.c \
 	b64-encode.c \

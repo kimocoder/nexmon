@@ -62,8 +62,6 @@
 #define TYPEDEF_BOOL
 #include <errno.h>
 
-#include <wlcnt.h>
-
 #include <nexioctls.h>
 #include <capabilities.h>
 
@@ -74,6 +72,7 @@ typedef uint32_t uint;
 #include <b64.h>
 
 #include "nexutil_capabilities.h"
+#include "nexutil_wlcnt.h"
 
 #if ANDROID
 #include <sys/system_properties.h>
@@ -123,12 +122,14 @@ unsigned char   nonblock = false;
 unsigned char   read_shm = false;
 unsigned int    read_shm_offset = 0;
 unsigned char   write_shm = false;
+unsigned char   write_shm_requested = false;
 unsigned char   write_shm_offset_set = false;
 unsigned int    write_shm_offset = 0;
 unsigned int    write_shm_val = 0;
 unsigned char   read_templ = false;
 unsigned int    read_templ_offset = 0;
 unsigned char   write_templ = false;
+unsigned char   write_templ_requested = false;
 unsigned char   write_templ_offset_set = false;
 unsigned int    write_templ_offset = 0;
 unsigned int    write_templ_val = 0;
@@ -300,7 +301,7 @@ static struct argp_option options[] = {
     {"custom-cmd-value-base64", 'b', 0, 0, "Define that custom-cmd-value should be interpreted as base64 string"},
     {"base64-output", 'R', 0, 0, "Write base64 encoded strings to stdout instead of hex dumping"},
     {"raw-output", 'r', "INT", OPTION_ARG_OPTIONAL, "Write raw output to stdout, or read D11 SHM at offset INT"},
-    {"dump-wl_cnt", 'w', "INT", OPTION_ARG_OPTIONAL, "Dump WL counters, or write D11 SHM at offset INT"},
+    {"dump-wl_cnt", 'w', "INT", OPTION_ARG_OPTIONAL, "Dump WL counters (custom ioctl or 'counters' iovar), or write D11 SHM at offset INT"},
     {"read-shm", 'S', "INT", OPTION_ARG_OPTIONAL, "Read D11 SHM register at offset INT (host memory-mapped)"},
     {"write-shm", 'W', "INT=VAL", OPTION_ARG_OPTIONAL, "Write D11 SHM register (offset=val, or offset with -v)"},
     {"read-template", 'T', "INT", OPTION_ARG_OPTIONAL, "Read D11 template RAM at offset INT (host memory-mapped)"},
@@ -351,6 +352,23 @@ parse_uint(const char *arg, const char *name, struct argp_state *state)
     if (endptr == arg || *endptr != '\0' || errno != 0 || val > 0xFFFFFFFFUL) {
         fprintf(stderr, "ERR: invalid %s '%s'\n", name, arg);
         argp_error(state, "invalid %s '%s'", name, arg);
+    }
+    return (unsigned int) val;
+}
+
+/* Parse a numeric value without argp state, for options resolved after the
+ * command line has been read (e.g. -W OFFSET -v VALUE in either order). */
+static unsigned int
+parse_uint_value(const char *arg, const char *name)
+{
+    char *endptr = NULL;
+    unsigned long val;
+
+    errno = 0;
+    val = strtoul(arg, &endptr, 0);
+    if (endptr == arg || *endptr != '\0' || errno != 0 || val > 0xFFFFFFFFUL) {
+        fprintf(stderr, "ERR: invalid %s '%s'\n", name, arg);
+        exit(EXIT_FAILURE);
     }
     return (unsigned int) val;
 }
@@ -445,11 +463,11 @@ parse_opt(int key, char *arg, struct argp_state *state)
             {
                 char *endptr = NULL;
                 long v = strtol(arg, &endptr, 0);
-                /* reject negative, non-numeric, or oversized lengths: the value
-                 * later sizes malloc() and is passed to nex_ioctl(int len), so a
-                 * negative or huge value would wrap or overrun downstream. */
-                if (endptr == arg || *endptr != '\0' || v < 0 || v > 0x100000) {
-                    fprintf(stderr, "ERR: invalid -l length '%s' (expected 0..1048576)\n", arg);
+                /* reject zero, negative, non-numeric, or oversized lengths: the
+                 * value later sizes malloc() and is passed to nex_ioctl(int len),
+                 * so a zero/negative/huge value would fail or wrap downstream. */
+                if (endptr == arg || *endptr != '\0' || v < 1 || v > 0x100000) {
+                    fprintf(stderr, "ERR: invalid -l length '%s' (expected 1..1048576)\n", arg);
                     exit(EXIT_FAILURE);
                 }
                 custom_cmd_buf_len = (unsigned int) v;
@@ -512,8 +530,9 @@ parse_opt(int key, char *arg, struct argp_state *state)
                 read_shm_offset = parse_uint(arg, "shm offset", state);
                 last_optional_opt = 0;
             } else {
-                if (!base64_output)
-                    raw_output = true;
+                if (base64_output)
+                    argp_error(state, "you can only either use base64 (-R) or raw (-r) output");
+                raw_output = true;
                 last_optional_opt = 'r';
             }
             break;
@@ -569,6 +588,7 @@ parse_opt(int key, char *arg, struct argp_state *state)
                     }
                 }
             } else {
+                write_templ_requested = true;
                 last_optional_opt = 'Y';
             }
             break;
@@ -613,6 +633,8 @@ parse_opt(int key, char *arg, struct argp_state *state)
             } else {
                 if (key == 'w')
                     dump_wl_cnt = true;
+                else
+                    write_shm_requested = true;
                 last_optional_opt = key;
             }
             break;
@@ -877,7 +899,28 @@ main(int argc, char **argv)
     int buf = 0;
     int failed = 0;
 
-    argp_parse(&argp, argc, argv, 0, 0, 0);
+    argp_parse(&argp, argc, argv, ARGP_IN_ORDER, 0, 0);
+
+    /* -v may appear after the offset, so resolve the value now. */
+    if (!write_shm && write_shm_offset_set && custom_cmd_value) {
+        write_shm_val = parse_uint_value(custom_cmd_value, "shm value");
+        write_shm = true;
+    }
+    if (!write_templ && write_templ_offset_set && custom_cmd_value) {
+        write_templ_val = parse_uint_value(custom_cmd_value, "template value");
+        write_templ = true;
+    }
+
+    if ((write_shm_requested || write_shm_offset_set) && !write_shm) {
+        fprintf(stderr, "ERR: -W/-w offset given without a value "
+                "(use -W offset=value or -v VALUE)\n");
+        exit(EXIT_FAILURE);
+    }
+    if ((write_templ_requested || write_templ_offset_set) && !write_templ) {
+        fprintf(stderr, "ERR: -Y offset given without a value "
+                "(use -Y offset=value or -v VALUE)\n");
+        exit(EXIT_FAILURE);
+    }
 
     if (hop_cfg.enabled && set_chanspec) {
         fprintf(stderr, "ERR: cannot combine --chanspec (-k) with --hop (-H)\n");
@@ -1248,6 +1291,7 @@ main(int argc, char **argv)
                 char *encoded = b64_encode(custom_cmd_buf, custom_cmd_buf_len);
                 if (encoded) {
                     fwrite(encoded, sizeof(char), strlen(encoded), stdout);
+                    fputc('\n', stdout);
                     fflush(stdout);
                     free(encoded);
                 } else {
@@ -1400,22 +1444,15 @@ main(int argc, char **argv)
     }
 
     if (dump_wl_cnt) {
-        wl_cnt_t cnt;
-        wl_cnt_t *_cnt = &cnt;
-        memset(_cnt, 0, sizeof(cnt));
-        ret = nex_ioctl(nexio, NEX_GET_WL_CNT, _cnt, sizeof(cnt), false);
+        unsigned char cnt_buf[2048] __attribute__((aligned(4)));
+
+        ret = nexutil_read_wl_counters(nex_ioctl, nexio, cnt_buf, sizeof(cnt_buf));
         if (ret < 0) {
             fprintf(stderr, "ERR: failed to get wl counters (err=%d)\n", ret);
             failed = 1;
-        } else {
-            unsigned int i;
-            printf("version: %d\n", le16toh(_cnt->version));
-            printf("length: %d\n", le16toh(_cnt->length));
-            for (i = 1; i < sizeof(cnt)/4; i++) {
-                printf("%s: %u (%s)\n", wl_cnt_varname[i], le32toh(((uint32 *) _cnt)[i]), wl_cnt_description[i]);
-            }
+        } else if (nexutil_print_wl_counters(cnt_buf, sizeof(cnt_buf), stdout, stderr) < 0) {
+            failed = 1;
         }
-        //hexdump(_cnt, sizeof(_cnt)); 
     }
 
     if (revinfo) {

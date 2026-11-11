@@ -79,6 +79,41 @@ class TestNexutilCli(unittest.TestCase):
         self.assertNotEqual(res.returncode, 0)
         self.assertIn("ERR: cannot combine --chanspec (-k) with --hop (-H)", res.stderr)
 
+    def test_optional_argument_before_option(self):
+        """-M 0 -l 32 must not be rejected as an extra positional argument."""
+        res = subprocess.run(
+            [str(NEXUTIL_BIN), "-I", "wlan0", "-M", "0", "-l", "32"],
+            capture_output=True, text=True)
+        self.assertNotIn("Too many arguments", res.stderr)
+
+    def test_write_shm_without_value_rejected(self):
+        res = subprocess.run(
+            [str(NEXUTIL_BIN), "-I", "wlan0", "-W"],
+            capture_output=True, text=True)
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("offset given without a value", res.stderr)
+
+    def test_write_template_without_value_rejected(self):
+        res = subprocess.run(
+            [str(NEXUTIL_BIN), "-I", "wlan0", "-Y"],
+            capture_output=True, text=True)
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("offset given without a value", res.stderr)
+
+    def test_zero_buffer_length_rejected(self):
+        res = subprocess.run(
+            [str(NEXUTIL_BIN), "-I", "wlan0", "-g", "400", "-l", "0"],
+            capture_output=True, text=True)
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("invalid -l length '0'", res.stderr)
+
+    def test_raw_and_base64_output_conflict(self):
+        res = subprocess.run(
+            [str(NEXUTIL_BIN), "-I", "wlan0", "-g", "400", "-R", "-r"],
+            capture_output=True, text=True)
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("base64 (-R) or raw (-r)", res.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
