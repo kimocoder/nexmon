@@ -476,7 +476,7 @@ static int brcmf_vif_add_validate(struct brcmf_cfg80211_info *cfg,
 	//Return not supported if hostapd tries to add a second monitor interface
 	if (new_type == NL80211_IFTYPE_MONITOR)
 	{    
-		brcmf_err("Attempt to add a MONITOR interface...\n");
+		brcmf_dbg(TRACE, "Attempt to add a MONITOR interface...\n");
 		if (params.iftype_num[new_type] > 1) 
 		{
 			brcmf_err("... there is already a monitor interface, returning EOPNOTSUPP\n");
