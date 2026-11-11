@@ -101,6 +101,19 @@ class TestCommandLine(unittest.TestCase):
     def test_rejects_wrong_abi(self):
         self.assertEqual(self.mod.main([self.tmp.name, "--abi", "arm64-v8a"]), 1)
 
+    def test_skips_relocatable_objects(self):
+        # ndk-build leaves ET_REL .o files under objs/; the linker, not the
+        # compiler, adds .note.android.ident to the shipped artifacts.
+        data = bytearray(elf32_with_note(21))
+        struct.pack_into("<H", data, 16, 1)
+        data[0x100:0x100 + 104] = b"\0" * 104
+        with __import__("tempfile").NamedTemporaryFile(suffix=".o", delete=False) as handle:
+            handle.write(data)
+        try:
+            self.assertEqual(self.mod.main([handle.name, "--max-api", "21"]), 0)
+        finally:
+            __import__("os").unlink(handle.name)
+
 
 if __name__ == "__main__":
     unittest.main()

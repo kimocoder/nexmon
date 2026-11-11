@@ -6,6 +6,9 @@ Every Android executable and shared library built by ndk-build carries a
 against, and an ELF header that records the machine type. This script reads both
 directly, so it works on a build host without the NDK or binutils.
 
+Relocatable objects (ET_REL, the .o files ndk-build leaves under objs/) are
+skipped: the note is added by the linker, and objects are never shipped.
+
 Exit status is 1 if any file mismatches --abi or needs a higher API than
 --max-api, 0 otherwise. Files that are not ELF (assets such as firmware images)
 are skipped.
@@ -44,6 +47,12 @@ def read_elf_header(data: bytes) -> Optional[tuple[int, int]]:
     endian = "<" if data[5] == 1 else ">"
     (machine,) = struct.unpack_from(endian + "H", data, 18)
     return elf_class, machine
+
+
+def is_relocatable(data: bytes) -> bool:
+    """True for ET_REL object files, which are build intermediates."""
+    endian = "<" if data[5] == 1 else ">"
+    return struct.unpack_from(endian + "H", data, 16)[0] == 1
 
 
 def abi_name(header: tuple[int, int]) -> Optional[str]:
@@ -174,7 +183,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             failures.append(f"{path}: cannot read ({exc})")
             continue
         header = read_elf_header(data)
-        if header is None:
+        if header is None or is_relocatable(data):
             continue
         checked += 1
         abi = abi_name(header)
