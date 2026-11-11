@@ -37,7 +37,7 @@ all: $(TARGET_LIB) libnexio.a
 
 $(TARGET_LIB): Android.mk Application.mk libnexio.c libnexio.h
 	mkdir -p local
-	flock local $(NDK_ROOT)/ndk-build NDK_APPLICATION_MK=`pwd`/Application.mk NDK_APP_OUT=. TARGET_PLATFORM=android-21 $(if $(APP_ABI),APP_ABI=$(APP_ABI))
+	flock local $(NDK_ROOT)/ndk-build NDK_APPLICATION_MK=`pwd`/Application.mk NDK_APP_OUT=. TARGET_PLATFORM=android-21 $(if $(APP_ABI),APP_ABI='$(APP_ABI)')
 	@if [ -f local/$(TARGET_ABI)/libnexio.a ]; then \
 		cp -f local/$(TARGET_ABI)/libnexio.a ./libnexio.a; \
 	elif [ -f local/armeabi-v7a/libnexio.a ]; then \
