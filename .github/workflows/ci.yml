@@ -129,6 +129,118 @@ jobs:
         working-directory: app
         run: ./gradlew --no-daemon --stacktrace assembleDebug
 
+  android-native:
+    name: Android Native (API 21, armeabi-v7a + arm64-v8a)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - uses: android-actions/setup-android@v3
+
+      # The bundled firmware cross-compiler (x86) and the host tools it drives
+      # are 32-bit executables.
+      - name: Install NDK and 32-bit firmware build dependencies
+        run: |
+          sudo dpkg --add-architecture i386 || true
+          sudo apt-get update
+          sudo apt-get install -y gcc g++-multilib libc6-i386 libgmp-dev libgmp-dev:i386 make gawk qpdf xxd
+          sdkmanager "ndk;30.0.16248370"
+
+      - name: Build host tools and firmware assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          touch DISABLE_STATISTICS
+          source setup_env.sh
+          export ANDROID_NDK_ROOT="${ANDROID_NDK_ROOT:-$(find "$ANDROID_SDK_ROOT/ndk" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)}"
+          export NDK_ROOT="$ANDROID_NDK_ROOT"
+          make -C buildtools
+          make -C firmwares/bcm4330/5_90_100_41_sta
+          make -C firmwares/bcm4339/6_37_34_43
+          make -C firmwares/bcm4358/7_112_200_17_sta
+
+      # Builds the JNI helpers (both ABIs where the source allows it) and every
+      # executable asset the APK ships.
+      - name: Build native app
+        shell: bash
+        run: |
+          set -euo pipefail
+          source setup_env.sh
+          export ANDROID_NDK_ROOT="${ANDROID_NDK_ROOT:-$(find "$ANDROID_SDK_ROOT/ndk" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)}"
+          export NDK_ROOT="$ANDROID_NDK_ROOT"
+          for d in libosdep libpcap libsqlite libargp libssl libcrypto \
+                   libnexio libnexmon libfakeioctl nexutil socat netcat iw dhdutil mdk4 \
+                   rawproxy rawproxyreverse tcpdump aircrack-ng wireless_tools; do
+            make -C "utilities/$d" APP_ABI='armeabi-v7a arm64-v8a'
+          done
+          make -C app/app/src/main
+
+      - name: Verify ABI and API level (armeabi-v7a)
+        run: |
+          set -euo pipefail
+          dirs=$(find app/app/src/main/libs utilities \
+            -maxdepth 3 -type d -name armeabi-v7a -not -path '*/.wsdeps/*')
+          python3 buildtools/scripts/check_android_abi.py \
+            --max-api 21 --abi armeabi-v7a $dirs
+
+      - name: Verify ABI and API level (arm64-v8a)
+        run: |
+          set -euo pipefail
+          dirs=$(find utilities -maxdepth 3 -type d -name arm64-v8a -not -path '*/.wsdeps/*')
+          python3 buildtools/scripts/check_android_abi.py \
+            --max-api 21 --abi arm64-v8a $dirs
+
+  android-api21-smoke:
+    name: Android API 21 Emulator Smoke Test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install NDK
+        run: sdkmanager "ndk;30.0.16248370"
+
+      # The emulator images GitHub hosts are x86. Build the small, dependency-
+      # light tools for x86 so the binaries can actually run on the API 21 image;
+      # the armeabi-v7a/arm64 output is gated by the android-native job instead.
+      - name: Build x86 tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          source setup_env.sh
+          export ANDROID_NDK_ROOT="${ANDROID_NDK_ROOT:-$(find "$ANDROID_SDK_ROOT/ndk" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)}"
+          export NDK_ROOT="$ANDROID_NDK_ROOT"
+          for d in libnexio libargp libpcap; do
+            make -C "utilities/$d" APP_ABI=x86
+          done
+          for d in nexutil socat netcat iw dhdutil; do
+            make -C "utilities/$d" APP_ABI=x86
+          done
+
+      - name: Run on API 21
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 21
+          target: default
+          arch: x86
+          disable-animations: true
+          script: |
+            buildtools/scripts/android_smoke_test.sh \
+              utilities/nexutil/libs/x86/nexutil \
+              utilities/socat/libs/x86/socat \
+              utilities/netcat/libs/x86/nc \
+              utilities/iw/libs/x86/iw \
+              utilities/dhdutil/libs/x86/dhdutil
+
   firmware:
     name: Build & Validate BCM43455c0 Firmware
     runs-on: ubuntu-24.04
