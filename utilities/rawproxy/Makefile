@@ -1,16 +1,20 @@
+APP_ABI ?= armeabi-v7a arm64-v8a
+
 GIT_VERSION := $(shell git describe --abbrev=4 --dirty --always --tags)
 
-all: libs/armeabi-v7a/rawproxy
-
-libs/armeabi-v7a/rawproxy: Android.mk rawproxy.c ../libargp/local/armeabi-v7a/libargp.a ../libpcap/local/armeabi-v7a/libpcap.a FORCE
+all: deps FORCE
 	touch rawproxy.c
-	$(NDK_ROOT)/ndk-build NDK_APPLICATION_MK=`pwd`/Application.mk NDK_APP_OUT=. TARGET_PLATFORM=android-21 GIT_VERSION=$(GIT_VERSION)
+	$(NDK_ROOT)/ndk-build NDK_APPLICATION_MK=`pwd`/Application.mk NDK_APP_OUT=. TARGET_PLATFORM=android-21 APP_ABI='$(APP_ABI)' GIT_VERSION=$(GIT_VERSION)
+
+deps: FORCE
+	$(MAKE) -C ../libargp APP_ABI='$(APP_ABI)'
+	$(MAKE) -C ../libpcap APP_ABI='$(APP_ABI)'
 
 ../libargp/local/armeabi-v7a/libargp.a: FORCE
-	cd ../libargp && $(MAKE) $(if $(APP_ABI),APP_ABI=$(APP_ABI))
+	cd ../libargp && $(MAKE) APP_ABI='$(APP_ABI)'
 
 ../libpcap/local/armeabi-v7a/libpcap.a: FORCE
-	cd ../libpcap && $(MAKE) $(if $(APP_ABI),APP_ABI=$(APP_ABI))
+	cd ../libpcap && $(MAKE) APP_ABI='$(APP_ABI)'
 
 clean:
 	rm -Rf libs

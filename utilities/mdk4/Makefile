@@ -1,13 +1,17 @@
-all: libs/armeabi-v7a/mdk4
+APP_ABI ?= armeabi-v7a arm64-v8a
 
-libs/armeabi-v7a/mdk4: Android.mk ../libosdep/local/armeabi-v7a/libosdep.a ../libpcap/local/armeabi-v7a/libpcap.a
-	$(NDK_ROOT)/ndk-build NDK_APPLICATION_MK=`pwd`/Application.mk NDK_APP_OUT=. TARGET_PLATFORM=android-21
+all: deps FORCE
+	$(NDK_ROOT)/ndk-build NDK_APPLICATION_MK=`pwd`/Application.mk NDK_APP_OUT=. TARGET_PLATFORM=android-21 APP_ABI='$(APP_ABI)'
+
+deps: FORCE
+	$(MAKE) -C ../libosdep APP_ABI='$(APP_ABI)'
+	$(MAKE) -C ../libpcap APP_ABI='$(APP_ABI)'
 
 ../libosdep/local/armeabi-v7a/libosdep.a: FORCE
-	cd ../libosdep && $(MAKE) $(if $(APP_ABI),APP_ABI=$(APP_ABI))
+	cd ../libosdep && $(MAKE) APP_ABI='$(APP_ABI)'
 
 ../libpcap/local/armeabi-v7a/libpcap.a: FORCE
-	cd ../libpcap && $(MAKE) $(if $(APP_ABI),APP_ABI=$(APP_ABI))
+	cd ../libpcap && $(MAKE) APP_ABI='$(APP_ABI)'
 
 clean:
 	rm -Rf libs

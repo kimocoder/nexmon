@@ -1,6 +1,8 @@
+APP_ABI ?= armeabi-v7a
+
 all: FORCE
-	make -C jni
-	cp libs/armeabi/libnexmonpentestsuite.so ../libs/armeabi/
+	$(MAKE) -C jni APP_ABI=$(APP_ABI)
+	cp libs/$(APP_ABI)/libnexmonpentestsuite.so ../libs/$(APP_ABI)/
 
 clean: FORCE
 	rm -rf libs

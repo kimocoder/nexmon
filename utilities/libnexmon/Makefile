@@ -4,15 +4,15 @@ LIBNEXIO := ../libnexio/local/$(LIBNEXIO_ABI)/libnexio.a
 all: $(LIBNEXIO) Android.mk nexmon.c
 	$(NDK_ROOT)/ndk-build NDK_APPLICATION_MK=`pwd`/Application.mk NDK_APP_OUT=. TARGET_PLATFORM=android-21 $(if $(APP_ABI),APP_ABI=$(APP_ABI))
 
-libs/armeabi/libnexmon.so libs/armeabi-v7a/libnexmon.so libs/arm64-v8a/libnexmon.so: $(LIBNEXIO) Android.mk nexmon.c
+libs/armeabi-v7a/libnexmon.so libs/arm64-v8a/libnexmon.so: $(LIBNEXIO) Android.mk nexmon.c
 	$(NDK_ROOT)/ndk-build NDK_APPLICATION_MK=`pwd`/Application.mk NDK_APP_OUT=. TARGET_PLATFORM=android-21 $(if $(APP_ABI),APP_ABI=$(APP_ABI))
 
 $(LIBNEXIO) ../libnexio/local/armeabi/libnexio.a: FORCE
 	$(MAKE) -C ../libnexio $(if $(APP_ABI),APP_ABI=$(APP_ABI))
 
-install: libs/armeabi/libnexmon.so libs/arm64-v8a/libnexmon.so
+install: libs/armeabi-v7a/libnexmon.so libs/arm64-v8a/libnexmon.so
 	adb shell 'su -c "mount -o rw,remount /system"'
-	adb push libs/armeabi/libnexmon.so /sdcard/
+	adb push libs/armeabi-v7a/libnexmon.so /sdcard/
 	adb shell 'su -c "cp /sdcard/libnexmon.so /system/lib/libnexmon.so"'
 	adb push libs/arm64-v8a/libnexmon.so /sdcard/
 	adb shell 'su -c "cp /sdcard/libnexmon.so /system/lib64/libnexmon.so"'

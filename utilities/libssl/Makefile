@@ -1,10 +1,10 @@
-# Same overlap as libcrypto: callers rebuild this library with -j while
-# another ndk-build is already compiling it. See utilities/libcrypto/Makefile.
-.PHONY: all libs/armeabi/libssl.a
+# Callers rebuild this library with -j while another ndk-build is already
+# compiling it. See libcrypto/Makefile.
+APP_ABI ?= armeabi-v7a arm64-v8a
 
-all libs/armeabi/libssl.a &:
+all: FORCE
 	mkdir -p local
-	flock local $(NDK_ROOT)/ndk-build NDK_APPLICATION_MK=`pwd`/Application.mk NDK_APP_OUT=. TARGET_PLATFORM=android-21 $(if $(APP_ABI),APP_ABI=$(APP_ABI))
+	flock local $(NDK_ROOT)/ndk-build NDK_APPLICATION_MK=`pwd`/Application.mk NDK_APP_OUT=. TARGET_PLATFORM=android-21 APP_ABI='$(APP_ABI)'
 	touch local/.built.stamp
 
 clean:
@@ -15,4 +15,4 @@ install:
 	@echo "nothing to install ..."
 
 FORCE:
-	
+.PHONY: all clean install FORCE

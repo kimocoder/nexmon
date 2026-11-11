@@ -1,18 +1,19 @@
+APP_ABI ?= armeabi-v7a
+
 SUBDIRS := $(wildcard */.)
 SUBCLEAN = $(addsuffix .clean,$(SUBDIRS))
 
 all: $(SUBDIRS)
 
 $(SUBDIRS):
-	make -C $@
+	$(MAKE) -C $@ APP_ABI=$(APP_ABI)
 
 clean: $(SUBCLEAN)
 
 $(SUBCLEAN): %.clean:
-	make -C $* clean
-	rm -f ../../libs/armeabi/*.so
-	rm -f ../../libs/armeabi/*.a
+	$(MAKE) -C $* clean
+	rm -f ../../libs/*/*.so
+	rm -f ../../libs/*/*.a
 
 
 .PHONY: all $(SUBDIRS) clean $(SUBCLEAN)
-

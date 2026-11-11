@@ -33,7 +33,7 @@ ARCH ?= all
 SUPPORTED_ARCHES := all arm armv7 armeabi armeabi-v7a arm64 aarch64 arm64-v8a x86 x86_64 x64
 
 ifeq ($(ARCH),all)
-    NDK_APP_ABI := all
+    NDK_APP_ABI := armeabi-v7a arm64-v8a
 else ifneq ($(filter $(ARCH),arm armv7 armeabi armeabi-v7a),)
     NDK_APP_ABI := armeabi-v7a
 else ifneq ($(filter $(ARCH),arm64 aarch64 arm64-v8a),)
@@ -46,7 +46,7 @@ else
     $(error Unsupported ARCH=$(ARCH). Supported: $(SUPPORTED_ARCHES))
 endif
 
-NDK_ABI_ARG := APP_ABI=$(NDK_APP_ABI)
+NDK_ABI_ARG := APP_ABI='$(NDK_APP_ABI)'
 ARCH_TARGETS := arm armv7 armeabi armeabi-v7a arm64 aarch64 arm64-v8a x86 x86_64 x64
 
 SUBDIRS := $(wildcard */.)

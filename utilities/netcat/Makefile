@@ -1,9 +1,10 @@
-all: libs/armeabi/nc
+APP_ABI ?= armeabi-v7a arm64-v8a
+NETCAT_ABI := $(firstword $(APP_ABI))
 
-libs/armeabi/nc: netcat.c Android.mk
-	$(NDK_ROOT)/ndk-build NDK_APPLICATION_MK=`pwd`/Application.mk NDK_APP_OUT=. TARGET_PLATFORM=android-21
+all: FORCE
+	$(NDK_ROOT)/ndk-build NDK_APPLICATION_MK=`pwd`/Application.mk NDK_APP_OUT=. TARGET_PLATFORM=android-21 APP_ABI='$(APP_ABI)'
 
-install: libs/armeabi/nc
+install: libs/$(NETCAT_ABI)/nc
 	adb push $< /sdcard/
 	adb shell 'su -c "mount -o rw,remount /system"'
 	adb shell 'su -c "cp /sdcard/nc /system/bin/nc"'
@@ -12,3 +13,6 @@ install: libs/armeabi/nc
 clean:
 	rm -Rf libs
 	rm -Rf local
+
+FORCE:
+.PHONY: all clean install FORCE

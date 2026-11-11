@@ -2,6 +2,19 @@
 /build/
 /captures/
 /app/src/main/local/
+# Native build output of `make -C app/app/src/main` (JNI libs and the
+# utilities copied into assets/). Regenerated on every build.
+/app/src/main/libs/
+/app/src/main/assets/nexmon/
+/app/src/main/external/src/*/libs/
+/app/src/main/external/src/*/local/
+/app/src/main/internal/libs/
+/app/src/main/internal/local/
+/app/src/main/internal/jni/libs/
+/app/src/main/internal/jni/local/
+/app/src/main/internal/jni/obj/
+# Extracted from libwireshark.tar.gz at build time (~138 MB).
+/app/src/main/external/src/libwireshark_helper/prebuildlibs/libwireshark.a
 /app/build/outputs/
 /app/build/generated/
 /app/build/reports/

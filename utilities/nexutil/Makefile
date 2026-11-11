@@ -26,7 +26,7 @@ all: nexutil
 endif
 
 ifeq ($(NATIVE_BUILD),)
-libs/armeabi/nexutil libs/armeabi-v7a/nexutil libs/arm64-v8a/nexutil: $(LIBNEXIO) $(LIBARGP) Android.mk nexutil.c FORCE
+libs/armeabi-v7a/nexutil libs/arm64-v8a/nexutil: $(LIBNEXIO) $(LIBARGP) Android.mk nexutil.c FORCE
 	touch nexutil.c
 	$(NDK_ROOT)/ndk-build NDK_APPLICATION_MK=`pwd`/Application.mk NDK_APP_OUT=. TARGET_PLATFORM=android-21 GIT_VERSION=$(GIT_VERSION) $(if $(APP_ABI),APP_ABI=$(APP_ABI))
 else
@@ -45,7 +45,7 @@ $(LIBNEXIO) ../libnexio/local/armeabi/libnexio.a ../libnexio/libnexio.a: FORCE
 	$(MAKE) -C ../libnexio $(if $(APP_ABI),APP_ABI=$(APP_ABI))
 
 ifeq ($(NATIVE_BUILD),)
-install: libs/armeabi/nexutil
+install: libs/armeabi-v7a/nexutil
 	adb push $< /sdcard/
 	adb shell 'su -c "mount -o rw,remount /system"'
 	adb shell 'su -c "cp /sdcard/nexutil /system/bin/nexutil"'
