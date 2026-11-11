@@ -2145,10 +2145,64 @@ static int brcmf_net_mon_stop(struct net_device *ndev)
 	return err;
 }
 
+/* nexmon: the firmware injector (wl_send_hook -> wl_send_one ->
+ * inject_frame) only takes the injection path for frames that start with a
+ * radiotap header: it validates it_len and parses the RATE field, then
+ * skb_pull()s the header. A bare 802.11 frame falls through to wl_send(),
+ * which has no Ethernet header to work with, and never reaches the air.
+ *
+ * brcmfmac is a fullmac driver: frames from the monitor netdev skip
+ * mac80211, so userspace radiotap (if any) is still present in the skb.
+ * Wrap bare 802.11 frames in a minimal radiotap header, but pass frames that
+ * already carry one straight through - otherwise a second header is stacked
+ * on top, the firmware strips only the outer one, and the frame goes on air
+ * shifted by the size of the user's header. RATE is left absent on the
+ * synthesized header, so the firmware uses its default (2 Mb/s on 2.4 GHz,
+ * 6 Mb/s on 5 GHz).
+ */
+static bool brcmf_mon_skb_has_rtap(struct sk_buff *skb)
+{
+	struct ieee80211_radiotap_header *rtap;
+	u16 it_len;
+
+	if (skb->len < sizeof(*rtap))
+		return false;
+
+	rtap = (struct ieee80211_radiotap_header *)skb->data;
+	if (rtap->it_version != 0)
+		return false;
+
+	it_len = le16_to_cpu(rtap->it_len);
+	return it_len >= sizeof(*rtap) && it_len <= skb->len;
+}
+
+static netdev_tx_t brcmf_net_mon_start_xmit(struct sk_buff *skb,
+					    struct net_device *ndev)
+{
+	struct ieee80211_radiotap_header *rtap;
+
+	if (!brcmf_mon_skb_has_rtap(skb)) {
+		if (skb_headroom(skb) < sizeof(*rtap)) {
+			if (pskb_expand_head(skb, sizeof(*rtap), 0, GFP_ATOMIC)) {
+				ndev->stats.tx_dropped++;
+				dev_kfree_skb(skb);
+				return NETDEV_TX_OK;
+			}
+		}
+
+		skb_push(skb, sizeof(*rtap));
+		rtap = (struct ieee80211_radiotap_header *)skb->data;
+		memset(rtap, 0, sizeof(*rtap));
+		rtap->it_len = cpu_to_le16(sizeof(*rtap));
+	}
+
+	return brcmf_netdev_start_xmit(skb, ndev);
+}
+
 static const struct net_device_ops brcmf_netdev_ops_mon = {
 	.ndo_open = brcmf_net_mon_open,
 	.ndo_stop = brcmf_net_mon_stop,
-	.ndo_start_xmit = brcmf_netdev_start_xmit,
+	.ndo_start_xmit = brcmf_net_mon_start_xmit,
 	.ndo_set_mac_address = brcmf_netdev_set_mac_address,
 };
 
