@@ -1,15 +1,53 @@
-# To get started with Dependabot version updates, you'll need to specify which
-# package ecosystems to update and where the package manifests are located.
-# Please see the documentation for all configuration options:
-# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+# Dependabot version updates. GitHub runs these on its own schedule; there is no
+# Actions workflow to add. Opened pull requests run "Nexmon CI" automatically
+# because ci.yml triggers on pull_request.
+#
+# Docs: https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
 
 version: 2
 updates:
-  - package-ecosystem: "pip"
-    directory: "/"
-    schedule:
-      interval: "weekly"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+    labels: ["dependencies", "github-actions"]
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "build"
+    labels: ["dependencies", "python"]
+    groups:
+      python:
+        patterns: ["*"]
+
+  # Android app: AGP 7.4.2 / Gradle 7.6.4, compileSdk 28, legacy android.support.
+  - package-ecosystem: "gradle"
+    directory: "/app"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "build(android)"
+    labels: ["dependencies", "android"]
+    ignore:
+      # The app deliberately stays on android.support; moving to AndroidX and
+      # AGP 8 is tracked in app/MODERNIZATION.md, not as a dependency bump.
+      - dependency-name: "com.android.support:*"
+      - dependency-name: "com.android.tools.build:gradle"
+        update-types: ["version-update:semver-major"]
+      # Vendored under app/local-repo; only the pinned versions resolve.
+      - dependency-name: "eu.chainfire:libsuperuser"
+      - dependency-name: "com.nononsenseapps:filepicker"
