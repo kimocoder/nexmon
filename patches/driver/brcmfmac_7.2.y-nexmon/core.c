@@ -920,7 +920,7 @@ static const struct ethtool_ops brcmf_ethtool_ops = {
  * cfg80211 can treat the phy as monitor-only (channel hops) without the
  * firmware tearing down hwrs_scb / D11 clocks that injection needs.
  */
-static bool brcmf_nexmon_monitor_running(struct brcmf_pub *drvr)
+bool brcmf_nexmon_monitor_running(struct brcmf_pub *drvr)
 {
 	int i;
 

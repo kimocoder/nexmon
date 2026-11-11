@@ -698,12 +698,12 @@ static struct wireless_dev *brcmf_mon_add_vif(struct wiphy *wiphy, const char *n
 	struct brcmf_cfg80211_vif *vif;
 	int err;
 
-	brcmf_err("brcmf_mon_add_vif called\n");
+	brcmf_dbg(TRACE, "brcmf_mon_add_vif called\n");
 
 	if (brcmf_cfg80211_vif_event_armed(cfg))
 		return ERR_PTR(-EBUSY);
 
-	brcmf_err("Adding vif \"%s\"\n", name);
+	brcmf_dbg(TRACE, "Adding vif \"%s\"\n", name);
 
 	vif = brcmf_alloc_vif(cfg, NL80211_IFTYPE_MONITOR);
 	if (IS_ERR(vif))
@@ -8105,7 +8105,7 @@ struct brcmf_cfg80211_info *brcmf_cfg80211_attach(struct brcmf_pub *drvr,
 		goto priv_out;
 	}
 	cfg->d11inf.io_type = (u8)io_type;
-	brcmf_err("DEBUG: BRCMF_C_GET_VERSION raw io_type=%d (0x%x), truncated=%u (D11N=%d D11AC=%d)\n",
+	brcmf_dbg(INFO, "BRCMF_C_GET_VERSION raw io_type=%d (0x%x), truncated=%u (D11N=%d D11AC=%d)\n",
 		  io_type, io_type, cfg->d11inf.io_type,
 		  BRCMU_D11N_IOTYPE, BRCMU_D11AC_IOTYPE);
 	brcmu_d11_attach(&cfg->d11inf);

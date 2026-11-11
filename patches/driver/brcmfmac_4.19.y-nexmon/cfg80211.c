@@ -585,12 +585,12 @@ struct wireless_dev *brcmf_mon_add_vif(struct wiphy *wiphy, const char *name,
 	struct brcmf_cfg80211_vif *vif;
 	int err;
 
- 	brcmf_err("brcmf_mon_add_vif called\n");
+	brcmf_dbg(TRACE, "brcmf_mon_add_vif called\n");
 
  	if (brcmf_cfg80211_vif_event_armed(cfg))
 		return ERR_PTR(-EBUSY);
 
- 	brcmf_err("Adding vif \"%s\"\n", name);
+	brcmf_dbg(TRACE, "Adding vif \"%s\"\n", name);
 
  	vif = brcmf_alloc_vif(cfg, NL80211_IFTYPE_MONITOR);
 	if (IS_ERR(vif))
