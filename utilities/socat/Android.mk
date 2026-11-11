@@ -85,7 +85,13 @@ LOCAL_CFLAGS += -fcommon
 LOCAL_CFLAGS += -DRAND_F_SSLEAY_RAND_BYTES=100 -DRAND_R_PRNG_NOT_SEEDED=100
 
 LOCAL_STATIC_LIBRARIES += libssl libcrypto
-LOCAL_LDLIBS := -lc++_static
+LOCAL_LDLIBS := -lc++_static -lc++abi
+
+# bionic's <pty.h> only declares openpty() from API 23; socat ships the
+# implementation in openpty.c, so this header only supplies the prototype.
+LOCAL_CFLAGS += -include $(LOCAL_PATH)/pty_compat.h
+
+include $(BUILD_EXECUTABLE)
 
 
 include $(CLEAR_VARS)

@@ -9,6 +9,15 @@ MY_CFLAGS := -g -O3 -Wall -DANDROID -DOS_ANDROID -DLinux \
 	-Wno-deprecated-declarations \
 	-include openssl/evp.h
 
+# bionic only declares fseeko()/ftello() with a 64-bit off_t from API 24. With
+# _FILE_OFFSET_BITS=64 fseek() itself redirects to fseeko64(), so libc++'s
+# <fstream> (used by src/aircrack-ng/linecount.cpp) fails to compile on
+# android-21. Leaving off_t at 32 bits keeps fseeko()/ftello() usable, at the
+# cost of a 2 GiB file-size limit -- far beyond any capture the app handles.
+ifeq ($(TARGET_PLATFORM),android-21)
+    MY_CFLAGS := $(filter-out -D_FILE_OFFSET_BITS=64,$(MY_CFLAGS))
+endif
+
 MY_C_INCLUDES := \
 	$(LOCAL_PATH)/android \
 	$(LOCAL_PATH)/include \

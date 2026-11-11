@@ -68,7 +68,9 @@ android {
 
     defaultConfig {
         applicationId "de.tu_darmstadt.seemoo.nexmon"
-        minSdkVersion 24
+        // API 21 floor. Keep Java free of API 23+ calls (see MODERNIZATION.md)
+        // and keep every JNI Application.mk at android-21.
+        minSdkVersion 21
         // Kept below 34 on purpose: at targetSdk 34+ context-registered
         // receivers must pass RECEIVER_EXPORTED/RECEIVER_NOT_EXPORTED, which
         // would break the signature-permission registerReceiver() calls added

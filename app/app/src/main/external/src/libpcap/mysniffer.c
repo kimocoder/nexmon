@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <ctype.h>
 #include <pcap.h>
 #include <jni.h>
 #include "mysniffer.h"
@@ -120,14 +121,17 @@ char * sniff_it(JNIEnv *env, jobject pThis, jmethodID mid) {
 		fprintf(stderr, "Couldnt open device %s: %s\n", dev, errbuf);
 		return("error");
 	}
-	 pcap_setnonblock(handle, 1, errbuf);
+	if (pcap_setnonblock(handle, 1, errbuf) < 0)
+		fprintf(stderr, "Could not set nonblocking mode: %s\n", errbuf);
 
 
 	prot = pcap_datalink(handle);
     running = 1;
 
-    while(running)
-	    pcap_dispatch(handle, -1, got_packet, NULL);
+    while(running) {
+	    int dispatched = pcap_dispatch(handle, -1, got_packet, NULL);
+	    (void)dispatched;
+    }
 
 pcap_close(handle);
      (*env)->DeleteGlobalRef(env, cb_obj);

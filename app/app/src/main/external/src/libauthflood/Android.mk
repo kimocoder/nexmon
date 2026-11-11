@@ -25,7 +25,7 @@ LOCAL_SRC_FILES:=\
 	$(MDK3_PATH)/src/fragmenting.c
 
 LOCAL_CFLAGS := -g -O3 -Wall -Wextra -Wno-unused-but-set-variable -Wno-unused-parameter \
-	-lpcap -D__int8_t_defined -fPIC -mandroid -DANDROID -DOS_ANDROID -DLinux
+	-lpcap -D__int8_t_defined -fPIC -DANDROID -DOS_ANDROID -DLinux
 
 LOCAL_EXPORT_C_INCLUDES := $(MDK3_PATH)/src/attacks
 LOCAL_C_INCLUDES += $(MDK3_PATH)/src $(LOCAL_PATH)/src
@@ -35,13 +35,13 @@ include $(BUILD_SHARED_LIBRARY)
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := libosdep
-LOCAL_SRC_FILES := $(UTILITIES_PATH)/libosdep/local/armeabi/libosdep.a
+LOCAL_SRC_FILES := $(UTILITIES_PATH)/libosdep/local/$(TARGET_ARCH_ABI)/libosdep.a
 LOCAL_EXPORT_C_INCLUDES := $(UTILITIES_PATH)/libosdep/src
 include $(PREBUILT_STATIC_LIBRARY)
 
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := libpcap
-LOCAL_SRC_FILES := $(LOCAL_PATH)/../libpcap/local/armeabi/libpcap.a
+LOCAL_SRC_FILES := $(LOCAL_PATH)/../libpcap/local/$(TARGET_ARCH_ABI)/libpcap.a
 LOCAL_EXPORT_C_INCLUDES := $(UTILITIES_PATH)/libpcap
 include $(PREBUILT_STATIC_LIBRARY)

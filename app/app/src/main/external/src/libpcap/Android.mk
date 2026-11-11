@@ -10,25 +10,23 @@ include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := \
   $(UTILITIES_PATH)/libpcap/pcap-linux.c \
-  $(UTILITIES_PATH)/libpcap/pcap-usb-linux.c \
-  $(UTILITIES_PATH)/libpcap/pcap-can-linux.c \
-  $(UTILITIES_PATH)/libpcap/pcap-netfilter-linux.c \
   $(UTILITIES_PATH)/libpcap/pcap-netfilter-linux-android.c \
   $(UTILITIES_PATH)/libpcap/fad-gifc.c \
   $(UTILITIES_PATH)/libpcap/pcap.c \
-  $(UTILITIES_PATH)/libpcap/inet.c \
   $(UTILITIES_PATH)/libpcap/gencode.c \
   $(UTILITIES_PATH)/libpcap/optimize.c \
   $(UTILITIES_PATH)/libpcap/nametoaddr.c \
   $(UTILITIES_PATH)/libpcap/etherent.c \
+  $(UTILITIES_PATH)/libpcap/fmtutils.c \
   $(UTILITIES_PATH)/libpcap/savefile.c \
   $(UTILITIES_PATH)/libpcap/sf-pcap.c \
-  $(UTILITIES_PATH)/libpcap/sf-pcap-ng.c \
+  $(UTILITIES_PATH)/libpcap/sf-pcapng.c \
   $(UTILITIES_PATH)/libpcap/pcap-common.c \
-  $(UTILITIES_PATH)/libpcap/bpf/net/bpf_filter.c \
+  $(UTILITIES_PATH)/libpcap/pcap-util.c \
+  $(UTILITIES_PATH)/libpcap/pcap-new.c \
+  $(UTILITIES_PATH)/libpcap/bpf_filter.c \
   $(UTILITIES_PATH)/libpcap/bpf_image.c \
   $(UTILITIES_PATH)/libpcap/bpf_dump.c \
-  $(UTILITIES_PATH)/libpcap/version.c \
   mysniffer.c \
   myinjecter.c
 

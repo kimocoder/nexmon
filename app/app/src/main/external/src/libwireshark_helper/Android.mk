@@ -3,10 +3,14 @@ UTILITIES_PATH := $(LOCAL_PATH)/../../../../../../../utilities
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := libwireshark_helper
-LOCAL_SRC_FILES:= wireshark_helper.c
+LOCAL_SRC_FILES:= wireshark_helper.c sync_compat.c
 LOCAL_CFLAGS := -std=gnu89 -DHAVE_LIBPCAP
 LOCAL_C_INCLUDES += $(UTILITIES_PATH)
 LOCAL_STATIC_LIBRARIES := libtshark libwireshark libwiretap libwsutil libpcap libgmodule-2.0 libglib-2.0 libiconv libintl
+# prebuildlibs/libglib-2.0.a was built without -fPIC, so its references to
+# its own globals need binding at link time instead of via dynamic text
+# relocations (which Android rejects for targetSdk >= 23).
+LOCAL_LDFLAGS += -Wl,--exclude-libs,ALL
 LOCAL_LDLIBS := -llog -lz
 include $(BUILD_SHARED_LIBRARY)
 
@@ -41,7 +45,7 @@ include $(PREBUILT_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := libpcap
-LOCAL_SRC_FILES := $(LOCAL_PATH)/../libpcap/local/armeabi/libpcap.a
+LOCAL_SRC_FILES := $(LOCAL_PATH)/../libpcap/local/$(TARGET_ARCH_ABI)/libpcap.a
 LOCAL_EXPORT_C_INCLUDES := $(UTILITIES_PATH)/libpcap
 include $(PREBUILT_STATIC_LIBRARY)
 

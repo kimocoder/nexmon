@@ -7,7 +7,6 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.graphics.drawable.Icon;
 import android.os.IBinder;
 
 import com.google.gson.Gson;
@@ -215,15 +214,14 @@ public class AttackService extends Service {
         intentInfo.putExtra("ATTACK", new Gson().toJson(attack, Attack.ATTACK_TYPE.get(attack.getTypeString())));
        // intentInfo.setFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
         PendingIntent infoPendingIntent = PendingIntent.getActivity(MyApplication.getAppContext(), attack.getGuid(), intentInfo, PendingIntent.FLAG_UPDATE_CURRENT);
-        Icon iconInfo = Icon.createWithResource(MyApplication.getAppContext(), R.drawable.ic_info_outline_white_24dp);
-
-        Notification.Action actionInfo = new Notification.Action.Builder(iconInfo, "INFO", infoPendingIntent).build();
+        Notification.Action actionInfo = new Notification.Action.Builder(
+                R.drawable.ic_info_outline_white_24dp, "INFO", infoPendingIntent).build();
 
         Intent intent = new Intent("de.tu_darmstadt.seemoo.nexmon.ATTACK_SERVICE_STOP");
         intent.putExtra("ATTACK_ID", attack.getGuid());
         PendingIntent pendingIntent = PendingIntent.getBroadcast(MyApplication.getAppContext(), attack.getGuid(), intent, PendingIntent.FLAG_UPDATE_CURRENT);
-        Icon icon = Icon.createWithResource(MyApplication.getAppContext(), R.drawable.ic_close_black_24dp);
-        Notification.Action action = new Notification.Action.Builder(icon, "CANCEL", pendingIntent).build();
+        Notification.Action action = new Notification.Action.Builder(
+                R.drawable.ic_close_black_24dp, "CANCEL", pendingIntent).build();
         Notification n  = new Notification.Builder(this)
                 .setContentTitle(attack.getName() + ", ID: " + attack.getGuid())
                 .setContentText(text)

@@ -3,6 +3,14 @@
 #include <jni.h>
 #include "myinjecter.h"
 
+/* Modules that link libpcap together with libandroidlogger use its strong
+ * definition; the ones that do not must still resolve the call. */
+__attribute__((weak)) int start_logger(const char *app_name)
+{
+	(void)app_name;
+	return 0;
+}
+
 #define UPDATE_ERROR 1
 #define UPDATE_SUCCESS 2
 #define UPDATE_RUNNING 3
