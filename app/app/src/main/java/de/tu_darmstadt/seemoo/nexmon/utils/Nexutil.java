@@ -279,7 +279,6 @@ public class Nexutil {
     public final static int WLC_SET_FRAG = 16;
     public final static int WLC_GET_RTS = 17;
     public final static int WLC_SET_RTS = 18;
-    public final static int NEX_READ_D11_OBJMEM = 15;
     public final static int WLC_GET_INFRA = 19;
     public final static int WLC_SET_INFRA = 20;
     public final static int WLC_GET_AUTH = 21;

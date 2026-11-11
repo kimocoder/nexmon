@@ -16,6 +16,11 @@ buildscript {
 
 allprojects {
     repositories {
+        // libsuperuser and filepicker were published to jcenter, which is gone;
+        // their exact AARs and POMs are vendored under app/local-repo. Keeping
+        // the original coordinates lets Gradle resolve transitive support
+        // libraries normally. See local-repo/README.md for provenance.
+        maven { url = uri("$rootDir/local-repo") }
         google()
         mavenCentral()
     }

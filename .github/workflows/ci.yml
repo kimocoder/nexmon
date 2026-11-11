@@ -101,6 +101,34 @@ jobs:
       - name: Run Unit Tests
         run: python -m unittest discover -s tests -v
 
+  android:
+    name: Android App (assembleDebug)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # versionCode/versionName are derived from git history; a shallow
+          # clone makes rev-list --count report 1. blob:none keeps the full
+          # commit graph without downloading historical file contents.
+          fetch-depth: 0
+          filter: blob:none
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK platform and build tools
+        run: sdkmanager "platforms;android-28" "build-tools;30.0.3"
+
+      # Validates the Java/APK build. The JNI helpers under
+      # app/app/src/main/external are built separately with the NDK.
+      - name: Build debug APK
+        working-directory: app
+        run: ./gradlew --no-daemon --stacktrace assembleDebug
+
   firmware:
     name: Build & Validate BCM43455c0 Firmware
     runs-on: ubuntu-24.04

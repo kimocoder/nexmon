@@ -15,7 +15,7 @@ change**:
 |---|---|---|
 | Android Gradle Plugin | 2.3.2 | 7.4.2 |
 | Gradle wrapper | 3.3 | 7.6.4 |
-| Repositories | `jcenter()` | `google()` + `mavenCentral()` |
+| Repositories | `jcenter()` | `google()` + `mavenCentral()` + vendored `app/local-repo` |
 | Dependency configuration | `compile` | `implementation` |
 | `compileSdk` / `targetSdk` | 23 / 23 | 28 / 28 |
 | support-v4 / recyclerview-v7 | 23.4.0 | 28.0.0 (last support-lib release) |
@@ -31,17 +31,23 @@ which would break the signature-permission `registerReceiver(...)` calls added
 as part of the broadcast-hardening work. Raising it is part of the follow-up
 below.
 
-## Verification (must be done in a real Android environment)
+## Verification
 
-This repo's current environment has **no JDK and no Android SDK**, so these
-files could not be built here. Verify on a machine with JDK 11 and an Android
-SDK (API 28 platform + a build-tools that AGP 7.4 accepts):
+CI builds the app on JDK 17 with the Android SDK (API 28) and runs
+`./gradlew assembleDebug` (see `.github/workflows/ci.yml`, `android` job).
+Locally, with JDK 17 and an Android SDK (API 28 platform + build-tools 30.0.3):
 
 ```sh
 cd app
 ./gradlew assembleDebug        # expect BUILD SUCCESSFUL
 ./gradlew lint                 # informational (abortOnError is false)
 ```
+
+SDK levels are declared only in `app/build.gradle`; the stale `<uses-sdk>`
+block was removed from the manifest so it can no longer disagree with Gradle.
+`android:allowBackup` is `false` because app data includes capture files.
+`versionCode` comes from `git rev-list --count HEAD`; shallow clones report 1,
+so release jobs must use `fetch-depth: 0` or set `NEXMON_VERSION_CODE`.
 
 If `namespace` + the manifest `package` attribute both being present triggers a
 hard error on your AGP point release (it is a warning on 7.4.2), remove
