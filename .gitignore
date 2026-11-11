@@ -31,6 +31,9 @@ __pycache__/
 /.mainline-shared-backup/
 /output.txt/
 
+# Agent planning/spec drafts. Local working material, never committed.
+/docs/superpowers/
+
 # --- validation-run evidence ----------------------------------------------
 # Only the machine output is ignored. The scripts and REPORT.md under
 # audits/<date>/ are real engineering work and are deliberately NOT ignored,
