@@ -22,13 +22,9 @@ static int print_keys(struct nl_msg *msg, void *arg)
 		return NL_SKIP;
 	}
 
-	if (!tb[NL80211_ATTR_KEY_DATA]) {
-		fprintf(stderr, "ATTR_KEY_DATA missing!\n");
-		return NL_SKIP;
-	}
-
-	iw_hexdump("Key", nla_data(tb[NL80211_ATTR_KEY_DATA]),
-		   nla_len(tb[NL80211_ATTR_KEY_DATA]));
+	if (tb[NL80211_ATTR_KEY_DATA])
+		iw_hexdump("Key", nla_data(tb[NL80211_ATTR_KEY_DATA]),
+			   nla_len(tb[NL80211_ATTR_KEY_DATA]));
 
 	if (!tb[NL80211_ATTR_KEY_SEQ]) {
 		fprintf(stderr, "ATTR_KEY_SEQ missing!\n");

@@ -256,6 +256,7 @@ void print_eht_capability(const uint8_t *ie, int len, const uint8_t *he_cap,
 void print_multi_link(const uint8_t *ie, int len);
 void print_eht_operation(const uint8_t *ie, int len);
 void print_eht_info(struct nlattr *nl_iftype, int band);
+void print_uhr_info(struct nlattr *nl_iftype);
 void print_s1g_capability(const uint8_t *caps);
 
 char *channel_width_name(enum nl80211_chan_width width);
@@ -311,6 +312,7 @@ int set_bitrates(struct nl_msg *msg, int argc, char **argv,
 		 enum nl80211_attrs attr);
 
 int calc_s1g_ch_center_freq(__u8 ch_index, __u8 s1g_oper_class);
+int parse_link_id(struct nl_msg *msg, int *argc, char ***argv);
 
 /* sections */
 DECLARE_SECTION(ap);
@@ -333,6 +335,7 @@ DECLARE_SECTION(hwsim);
 DECLARE_SECTION(ibss);
 DECLARE_SECTION(info);
 DECLARE_SECTION(interface);
+DECLARE_SECTION(key);
 DECLARE_SECTION(link);
 DECLARE_SECTION(list);
 DECLARE_SECTION(measurement);

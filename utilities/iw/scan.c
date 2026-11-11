@@ -1822,6 +1822,22 @@ static void print_ie(const struct ie_print *p, const uint8_t type, uint8_t len,
 	p->print(type, len, data, ctx);
 }
 
+static void print_time_adv(const uint8_t type, uint8_t len, const uint8_t *data,
+			   const struct ie_context *ctx)
+{
+	printf("\n");
+	printf("\t\t * timing capabilities: %d\n", data[0]);
+
+	/* Time Value, Time Error and Time Update fields are only
+	 * present for timing capabilities value 2 (UTC at TSF 0) */
+	if (data[0] != 2 || len < 17)
+		return;
+
+	printf("\t\t * UTC time at TSF 0: %04d-%02d-%02d %02d:%02d:%02d.%03d\n",
+	       (data[2] << 8) | data[1], data[3], data[4],
+	       data[5], data[6], data[7], (data[9] << 8) | data[8]);
+}
+
 #define PRINT_IGN {		\
 	.name = "IGNORE",	\
 	.print = NULL,		\
@@ -1850,6 +1866,9 @@ static const struct ie_print ieprinters[] = {
 				  print_supp_op_classes, 1, 255, BIT(PRINT_SCAN), },
 	[EID_MEASUREMENT_PILOT_TX] = { "Measurement Pilot Transmission",
 				       print_measurement_pilot_tx, 1, 255, BIT(PRINT_SCAN), },
+	[EID_TIME_ADVERTISEMENT] = { "Time Advertisement", print_time_adv,
+				     1, 255, BIT(PRINT_SCAN), },
+	[EID_TIME_ZONE] = { "Time Zone", print_ssid, 1, 255, BIT(PRINT_SCAN), },
 	[EID_OVERLAP_BSS_SCAN_PARAM] = { "Overlapping BSS scan params",
 					 print_obss_scan_params, 14, 255, BIT(PRINT_SCAN), },
 	[EID_HT_OPERATION] = { "HT operation", print_ht_op, 22, 22, BIT(PRINT_SCAN), },
@@ -1891,6 +1910,14 @@ static void print_wifi_osen(const uint8_t type, uint8_t len,
 			    const struct ie_context *ctx)
 {
 	print_osen_ie("OSEN", "OSEN", len, data);
+}
+
+static void print_wifi_rsn_override(const uint8_t type, uint8_t len,
+			    const uint8_t *data,
+			    const struct ie_context *ctx)
+{
+	printf("\n\t");
+	print_rsn_ie("CCMP", "IEEE802.1X", len, data);
 }
 
 static bool print_wifi_wmm_param(const uint8_t *data, uint8_t len)
@@ -2311,7 +2338,7 @@ static inline void print_hs20_ind(const uint8_t type, uint8_t len,
 		printf("\t\tUnexpected length: %i\n", len);
 }
 
-static void print_wifi_owe_tarns(const uint8_t type, uint8_t len,
+static void print_wifi_owe_trans(const uint8_t type, uint8_t len,
 				 const uint8_t *data,
 				 const struct ie_context *ctx)
 {
@@ -2343,7 +2370,9 @@ static const struct ie_print wfa_printers[] = {
 	[9] = { "P2P", print_p2p, 2, 255, BIT(PRINT_SCAN), },
 	[16] = { "HotSpot 2.0 Indication", print_hs20_ind, 1, 255, BIT(PRINT_SCAN), },
 	[18] = { "HotSpot 2.0 OSEN", print_wifi_osen, 1, 255, BIT(PRINT_SCAN), },
-	[28] = { "OWE Transition Mode", print_wifi_owe_tarns, 7, 255, BIT(PRINT_SCAN), },
+	[28] = { "OWE Transition Mode", print_wifi_owe_trans, 7, 255, BIT(PRINT_SCAN), },
+	[41] = { "RSN Element Override", print_wifi_rsn_override, 4, 255, BIT(PRINT_SCAN), },
+	[42] = { "RSN Element Override 2", print_wifi_rsn_override, 4, 255, BIT(PRINT_SCAN), },
 };
 
 static void print_vendor(unsigned char len, unsigned char *data,

@@ -5,6 +5,7 @@
 #include <sys/param.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <time.h>
 
 #include <netlink/genl/genl.h>
 #include <netlink/genl/family.h>
@@ -142,6 +143,20 @@ static int print_channels_handler(struct nl_msg *msg, void *arg)
 						if (tb_freq[NL80211_FREQUENCY_ATTR_DFS_CAC_TIME])
 							printf("\t  DFS CAC time: %u ms\n",
 							       nla_get_u32(tb_freq[NL80211_FREQUENCY_ATTR_DFS_CAC_TIME]));
+					}
+
+					if (tb_freq[NL80211_FREQUENCY_ATTR_CAC_START_TIME]) {
+						struct timespec now_ts;
+						unsigned long long now_ns, cac_start_ns, elapsed_ms;
+
+						clock_gettime(CLOCK_BOOTTIME, &now_ts);
+						now_ns = now_ts.tv_sec * 1000000000ULL;
+						now_ns += now_ts.tv_nsec;
+
+						cac_start_ns = nla_get_u64(tb_freq[NL80211_FREQUENCY_ATTR_CAC_START_TIME]);
+						elapsed_ms = (now_ns - cac_start_ns) / 1000000;
+
+						printf("\t  CAC ongoing (elapsed time: %llu ms)\n", elapsed_ms);
 					}
 				}
 			}

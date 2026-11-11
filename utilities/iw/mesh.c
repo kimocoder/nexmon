@@ -317,8 +317,7 @@ static int set_interface_meshparam(struct nl80211_state *state,
 	}
 
 	while (argc) {
-		const char *name;
-		char *value;
+		char *name, *value;
 		_any any;
 
 		memset(&any, 0, sizeof(_any));

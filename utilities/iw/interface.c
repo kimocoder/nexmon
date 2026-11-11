@@ -17,6 +17,7 @@
 			"otherbss: show frames from other BSSes\n"\
 			"cook:     use cooked mode\n"\
 			"active:   use active mode (ACK incoming unicast packets)\n"\
+			"skiptx:   do not pass local TX packets\n"\
 			"mumimo-groupid <GROUP_ID>: use MUMIMO according to a group id\n"\
 			"mumimo-follow-mac <MAC_ADDRESS>: use MUMIMO according to a MAC address"
 
@@ -30,6 +31,7 @@ static char *mntr_flags[NL80211_MNTR_FLAG_MAX + 1] = {
 	"otherbss",
 	"cook",
 	"active",
+	"skiptx",
 };
 
 static int parse_mumimo_options(int *_argc, char ***_argv, struct nl_msg *msg)
@@ -107,7 +109,8 @@ static int parse_mntr_flags(int *_argc, char ***_argv,
 		/* parse monitor flags */
 		for (flag = __NL80211_MNTR_FLAG_INVALID;
 		     flag <= NL80211_MNTR_FLAG_MAX; flag++) {
-			if (strcmp(*argv, mntr_flags[flag]) == 0) {
+			if (mntr_flags[flag] &&
+			    strcmp(*argv, mntr_flags[flag]) == 0) {
 				ok = 1;
 				/*
 				 * This shouldn't be adding "flag" if that is
@@ -479,7 +482,7 @@ static int print_iface_handler(struct nl_msg *msg, void *arg)
 			nla_parse_nested(tb, NL80211_ATTR_MAX, link, NULL);
 			printf("%s\t - link", indent);
 			if (tb[NL80211_ATTR_MLO_LINK_ID])
-				printf(" ID %2d", nla_get_u32(tb[NL80211_ATTR_MLO_LINK_ID]));
+				printf(" ID %2d", nla_get_u8(tb[NL80211_ATTR_MLO_LINK_ID]));
 			if (tb[NL80211_ATTR_MAC]) {
 				char buf[20];
 

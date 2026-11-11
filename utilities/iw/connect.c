@@ -63,6 +63,10 @@ static int iw_conn(struct nl80211_state *state,
 			NLA_PUT_U32(msg, NL80211_ATTR_AUTH_TYPE,
 			    NL80211_AUTHTYPE_SHARED_KEY);
 			need_key = true;
+		} else if (strcmp(argv[0], "sae") == 0) {
+			NLA_PUT_U32(msg, NL80211_ATTR_AUTH_TYPE,
+			    NL80211_AUTHTYPE_SAE);
+			need_key = true;
 		} else {
 			return 1;
 		}
@@ -228,6 +232,10 @@ static int iw_auth(struct nl80211_state *state,
 	} else if (strcmp(argv[0], "shared") == 0) {
 		NLA_PUT_U32(msg, NL80211_ATTR_AUTH_TYPE,
 			    NL80211_AUTHTYPE_SHARED_KEY);
+		need_key = true;
+	} else if (strcmp(argv[0], "sae") == 0) {
+		NLA_PUT_U32(msg, NL80211_ATTR_AUTH_TYPE,
+			    NL80211_AUTHTYPE_SAE);
 		need_key = true;
 	} else {
 		return 1;

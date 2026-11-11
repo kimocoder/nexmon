@@ -155,3 +155,6 @@
 	[NL80211_CMD_SET_TID_TO_LINK_MAPPING] = "set_tid_to_link_mapping",
 	[NL80211_CMD_ASSOC_MLO_RECONF] = "assoc_mlo_reconf",
 	[NL80211_CMD_EPCS_CFG] = "epcs_cfg",
+	[NL80211_CMD_NAN_NEXT_DW_NOTIFICATION] = "nan_next_dw_notification",
+	[NL80211_CMD_NAN_CLUSTER_JOINED] = "nan_cluster_joined",
+	[NL80211_CMD_INCUMBENT_SIGNAL_DETECT] = "incumbent_signal_detect",
