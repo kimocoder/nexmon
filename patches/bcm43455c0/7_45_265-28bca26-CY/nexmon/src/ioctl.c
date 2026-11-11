@@ -45,6 +45,7 @@
 #include <version.h>            // version information
 #include <argprintf.h>          // allows to execute argprintf to print into the arg buffer
 #include <capabilities.h>
+#include <securitycookie.h>     // security cookie related
 
 #define NULL 0
 
@@ -90,6 +91,24 @@ wlc_ioctl_hook(struct wlc_info *wlc, int cmd, char *arg, int len, void *wlc_if)
         {
             if (len >= 4 && arg) {
                 memcpy(arg, &capabilities, 4);
+                ret = IOCTL_SUCCESS;
+            }
+            break;
+        }
+
+        case NEX_GET_SECURITYCOOKIE:
+        {
+            if (len >= 4 && arg) {
+                *(int *) arg = get_securitycookie();
+                ret = IOCTL_SUCCESS;
+            }
+            break;
+        }
+
+        case NEX_SET_SECURITYCOOKIE:
+        {
+            if (len >= 4 && arg) {
+                set_securitycookie(*(int *) arg);
                 ret = IOCTL_SUCCESS;
             }
             break;

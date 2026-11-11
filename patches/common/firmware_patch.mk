@@ -55,7 +55,7 @@ NEXMON_COMMON_CFLAGS = \
 	-fplugin-arg-nexmon-fwver=$(NEXMON_FW_VERSION_NUM) \
 	-DNEXMON_CHIP=$(NEXMON_CHIP) \
 	-DNEXMON_FW_VERSION=$(NEXMON_FW_VERSION) \
-	-DGIT_VERSION=\"$(GIT_VERSION)\" \
+	-DGIT_VERSION='"$(GIT_VERSION)"' \
 	-DBUILD_NUMBER=\"$$(cat BUILD_NUMBER)\" \
 	-Wall -Werror -O2 -nostdlib -nostartfiles -ffreestanding -mthumb -march=$(NEXMON_ARCH) \
 	-ffunction-sections -fdata-sections \

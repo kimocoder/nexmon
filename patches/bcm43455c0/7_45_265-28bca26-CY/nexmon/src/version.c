@@ -37,7 +37,7 @@
 #include <firmware_version.h>
 #include <patcher.h>
 
-char version[] = "7.45.265 (28bca26 CY nexmon.org: " GIT_VERSION "-" BUILD_NUMBER ")";
+char version[] = "7.45.265 (28bca26 CY nexmon.org: " GIT_VERSION ")";
 char date[] = __DATE__;
 char time[] = __TIME__;
 
