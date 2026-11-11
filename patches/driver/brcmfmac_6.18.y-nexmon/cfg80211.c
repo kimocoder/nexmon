@@ -428,6 +428,22 @@ static int brcmf_vif_change_validate(struct brcmf_cfg80211_info *cfg,
 		.num_different_channels = 1,
 	};
 
+#ifdef NEXMON_MON_IF
+	/* NEXMON: only one monitor vif is supported. Refuse to turn another
+	 * interface into a second monitor with a clear error instead of letting
+	 * cfg80211_check_combinations() fail it with a generic -EBUSY.
+	 */
+	if (new_type == NL80211_IFTYPE_MONITOR) {
+		list_for_each_entry(pos, &cfg->vif_list, list) {
+			if (pos != vif &&
+			    pos->wdev.iftype == NL80211_IFTYPE_MONITOR) {
+				brcmf_err("change_iface: a monitor interface already exists\n");
+				return -EOPNOTSUPP;
+			}
+		}
+	}
+#endif
+
 	list_for_each_entry(pos, &cfg->vif_list, list)
 		if (pos == vif) {
 			params.iftype_num[new_type]++;

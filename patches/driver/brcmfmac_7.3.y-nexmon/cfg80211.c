@@ -450,6 +450,22 @@ static int brcmf_vif_change_validate(struct brcmf_cfg80211_info *cfg,
 		.num_different_channels = 1,
 	};
 
+#ifdef NEXMON_MON_IF
+	/* NEXMON: only one monitor vif is supported. Refuse to turn another
+	 * interface into a second monitor with a clear error instead of letting
+	 * cfg80211_check_combinations() fail it with a generic -EBUSY.
+	 */
+	if (new_type == NL80211_IFTYPE_MONITOR) {
+		list_for_each_entry(pos, &cfg->vif_list, list) {
+			if (pos != vif &&
+			    pos->wdev.iftype == NL80211_IFTYPE_MONITOR) {
+				brcmf_err("change_iface: a monitor interface already exists\n");
+				return -EOPNOTSUPP;
+			}
+		}
+	}
+#endif
+
 	list_for_each_entry(pos, &cfg->vif_list, list)
 		if (pos == vif) {
 			params.iftype_num[new_type]++;
@@ -1408,28 +1424,6 @@ brcmf_cfg80211_scan(struct wiphy *wiphy, struct cfg80211_scan_request *request)
 
 	brcmf_dbg(TRACE, "Enter\n");
 	vif = container_of(request->wdev, struct brcmf_cfg80211_vif, wdev);
-	if (!check_vif_up(vif))
-		return -EIO;
-
-	if (test_bit(BRCMF_SCAN_STATUS_BUSY, &cfg->scan_status)) {
-		bphy_err(drvr, "Scanning already: status (%lu)\n",
-			 cfg->scan_status);
-		return -EAGAIN;
-	}
-	if (test_bit(BRCMF_SCAN_STATUS_ABORT, &cfg->scan_status)) {
-		bphy_err(drvr, "Scanning being aborted: status (%lu)\n",
-			 cfg->scan_status);
-		return -EAGAIN;
-	}
-	if (test_bit(BRCMF_SCAN_STATUS_SUPPRESS, &cfg->scan_status)) {
-		bphy_err(drvr, "Scanning suppressed: status (%lu)\n",
-			 cfg->scan_status);
-		return -EAGAIN;
-	}
-	if (test_bit(BRCMF_VIF_STATUS_CONNECTING, &vif->sme_state)) {
-		bphy_err(drvr, "Connecting: status (%lu)\n", vif->sme_state);
-		return -EAGAIN;
-	}
 
 	/* NEXMON: reject scans while a monitor vif is up. brcmf_net_mon_open()
 	 * puts the chip into MONITOR+PROMISC globally on the primary BSS, so an
@@ -1451,6 +1445,29 @@ brcmf_cfg80211_scan(struct wiphy *wiphy, struct cfg80211_scan_request *request)
 		bphy_err_ratelimited(drvr,
 			"scan rejected: a monitor vif is running (MONITOR+PROMISC is global, so escan would never complete and would trip the control-DCMD watchdog). Tear down the monitor vif to scan.\n");
 		return -EBUSY;
+	}
+
+	if (!check_vif_up(vif))
+		return -EIO;
+
+	if (test_bit(BRCMF_SCAN_STATUS_BUSY, &cfg->scan_status)) {
+		bphy_err(drvr, "Scanning already: status (%lu)\n",
+			 cfg->scan_status);
+		return -EAGAIN;
+	}
+	if (test_bit(BRCMF_SCAN_STATUS_ABORT, &cfg->scan_status)) {
+		bphy_err(drvr, "Scanning being aborted: status (%lu)\n",
+			 cfg->scan_status);
+		return -EAGAIN;
+	}
+	if (test_bit(BRCMF_SCAN_STATUS_SUPPRESS, &cfg->scan_status)) {
+		bphy_err(drvr, "Scanning suppressed: status (%lu)\n",
+			 cfg->scan_status);
+		return -EAGAIN;
+	}
+	if (test_bit(BRCMF_VIF_STATUS_CONNECTING, &vif->sme_state)) {
+		bphy_err(drvr, "Connecting: status (%lu)\n", vif->sme_state);
+		return -EAGAIN;
 	}
 
 	/* If scan req comes for p2p0, send it over primary I/F */
