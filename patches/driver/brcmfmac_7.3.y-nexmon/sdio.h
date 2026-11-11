@@ -169,6 +169,7 @@ struct brcmf_sdio_dev {
 	struct sdio_func *func1;
 	struct sdio_func *func2;
 	u32 sbwad;			/* Save backplane window address */
+	u32 d11_base;			/* runtime D11 core base address */
 	struct brcmf_core *cc_core;	/* chipcommon core info struct */
 	struct brcmf_sdio *bus;
 	struct device *dev;
@@ -378,6 +379,7 @@ void brcmf_sdio_cancel_datawork(struct brcmf_sdio *bus);
 void brcmf_sdio_wd_timer(struct brcmf_sdio *bus, bool active);
 void brcmf_sdio_wowl_config(struct device *dev, bool enabled);
 int brcmf_sdio_sleep(struct brcmf_sdio *bus, bool sleep);
+int brcmf_sdio_wake(struct brcmf_sdio *bus);
 void brcmf_sdio_trigger_dpc(struct brcmf_sdio *bus);
 void brcmf_sdio_debugfs_create(struct device *dev);
 

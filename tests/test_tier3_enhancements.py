@@ -746,7 +746,9 @@ class TestTier3PythonSDKAndTooling(unittest.TestCase):
             core = (ROOT / f"patches/driver/brcmfmac_{drv_ver}.y-nexmon/core.c").read_text(errors="replace")
             self.assertIn("frame->cmd == NEX_READ_D11_SHM", core)
             self.assertIn("frame->cmd == NEX_WRITE_D11_SHM", core)
-            self.assertIn("brcmf_sdio_sleep(sdiodev->bus, false);", core)
+            self.assertIn("brcmf_sdio_wake(sdiodev->bus);", core)
+            self.assertIn('brcmf_fil_iovar_int_set(target_ifp, "mpc", 0)', core)
+            self.assertIn('brcmf_fil_iovar_int_set(target_ifp, "mpc", saved_mpc)', core)
             self.assertIn("brcmf_sdiod_readl", core)
             self.assertIn("brcmf_sdiod_writel", core)
 

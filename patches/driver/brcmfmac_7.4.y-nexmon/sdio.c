@@ -4307,6 +4307,15 @@ brcmf_sdio_probe_attach(struct brcmf_sdio *bus)
 	if (!sdiodev->cc_core)
 		goto fail;
 
+	{
+		struct brcmf_core *d11_core = brcmf_chip_get_d11core(bus->ci, 0);
+
+		sdiodev->d11_base = d11_core ? d11_core->base : 0;
+		brcmf_info("NEXMON: D11 core base 0x%x up=%d\n",
+			   sdiodev->d11_base,
+			   d11_core ? brcmf_chip_iscoreup(d11_core) : 0);
+	}
+
 	sdiodev->settings = brcmf_get_module_param(sdiodev->dev,
 						   BRCMF_BUSTYPE_SDIO,
 						   bus->ci->chip,
@@ -4990,6 +4999,11 @@ void brcmf_sdio_wd_timer(struct brcmf_sdio *bus, bool active)
 			mod_timer(&bus->timer, jiffies + BRCMF_WD_POLL);
 		}
 	}
+}
+
+int brcmf_sdio_wake(struct brcmf_sdio *bus)
+{
+	return brcmf_sdio_bus_sleep(bus, false, false);
 }
 
 int brcmf_sdio_sleep(struct brcmf_sdio *bus, bool sleep)

@@ -462,10 +462,24 @@ nexmon_nl_ioctl_handler(struct sk_buff *skb)
             goto out_put;
         }
 
-        if (sdiodev->bus)
-            brcmf_sdio_sleep(sdiodev->bus, false);
+        /* D11 register access needs a clocked core. The firmware powers the
+         * core down when idle (mpc=1), which makes the backplane access fail
+         * or hang. Disable mpc for the duration of the access and restore it
+         * afterwards. */
+        u32 saved_mpc = 0;
+        u32 mpc_changed = 0;
+        if (brcmf_fil_iovar_int_get(target_ifp, "mpc", &saved_mpc) == 0 &&
+            saved_mpc) {
+            if (brcmf_fil_iovar_int_set(target_ifp, "mpc", 0) == 0)
+                mpc_changed = 1;
+        }
 
         sdio_claim_host(sdiodev->func1);
+        if (sdiodev->bus)
+            brcmf_sdio_wake(sdiodev->bus);
+        /* Force the backplane window to be reprogrammed: the cached value
+         * may predate the clock/power transition above. */
+        sdiodev->sbwad = 0;
         if (req.is_reg == 3) {
             /* Template RAM read via hardware indirect registers (0x130/0x134) */
             brcmf_sdiod_writel(sdiodev, D11_TPLATEWRPTR_REG, req.offset & 0x7FC, &ret);
@@ -515,6 +529,9 @@ nexmon_nl_ioctl_handler(struct sk_buff *skb)
             }
         }
         sdio_release_host(sdiodev->func1);
+
+        if (mpc_changed)
+            (void)brcmf_fil_iovar_int_set(target_ifp, "mpc", saved_mpc);
 
         if (ret) {
             netlink_ack(skb, nlh, ret < 0 ? ret : -ret, NULL);
@@ -584,10 +601,24 @@ nexmon_nl_ioctl_handler(struct sk_buff *skb)
             goto out_put;
         }
 
-        if (sdiodev->bus)
-            brcmf_sdio_sleep(sdiodev->bus, false);
+        /* D11 register access needs a clocked core. The firmware powers the
+         * core down when idle (mpc=1), which makes the backplane access fail
+         * or hang. Disable mpc for the duration of the access and restore it
+         * afterwards. */
+        u32 saved_mpc = 0;
+        u32 mpc_changed = 0;
+        if (brcmf_fil_iovar_int_get(target_ifp, "mpc", &saved_mpc) == 0 &&
+            saved_mpc) {
+            if (brcmf_fil_iovar_int_set(target_ifp, "mpc", 0) == 0)
+                mpc_changed = 1;
+        }
 
         sdio_claim_host(sdiodev->func1);
+        if (sdiodev->bus)
+            brcmf_sdio_wake(sdiodev->bus);
+        /* Force the backplane window to be reprogrammed: the cached value
+         * may predate the clock/power transition above. */
+        sdiodev->sbwad = 0;
         if (req.is_reg == 3) {
             /* Template RAM write via hardware indirect registers (0x130/0x134) */
             brcmf_sdiod_writel(sdiodev, D11_TPLATEWRPTR_REG, req.offset & 0x7FC, &ret);
@@ -649,6 +680,9 @@ nexmon_nl_ioctl_handler(struct sk_buff *skb)
         }
         sdio_release_host(sdiodev->func1);
 
+        if (mpc_changed)
+            (void)brcmf_fil_iovar_int_set(target_ifp, "mpc", saved_mpc);
+
         if (ret) {
             netlink_ack(skb, nlh, ret < 0 ? ret : -ret, NULL);
             goto out_put;
@@ -704,10 +738,24 @@ nexmon_nl_ioctl_handler(struct sk_buff *skb)
             goto out_put;
         }
 
-        if (sdiodev->bus)
-            brcmf_sdio_sleep(sdiodev->bus, false);
+        /* D11 register access needs a clocked core. The firmware powers the
+         * core down when idle (mpc=1), which makes the backplane access fail
+         * or hang. Disable mpc for the duration of the access and restore it
+         * afterwards. */
+        u32 saved_mpc = 0;
+        u32 mpc_changed = 0;
+        if (brcmf_fil_iovar_int_get(target_ifp, "mpc", &saved_mpc) == 0 &&
+            saved_mpc) {
+            if (brcmf_fil_iovar_int_set(target_ifp, "mpc", 0) == 0)
+                mpc_changed = 1;
+        }
 
         sdio_claim_host(sdiodev->func1);
+        if (sdiodev->bus)
+            brcmf_sdio_wake(sdiodev->bus);
+        /* Force the backplane window to be reprogrammed: the cached value
+         * may predate the clock/power transition above. */
+        sdiodev->sbwad = 0;
         if (req.method == 1) {
             base_addr = D11_TEMPLATE_RAM_BASE + (req.offset & 0x7FC);
             for (i = 0; i < req.len && !ret; i += 4) {
@@ -731,6 +779,9 @@ nexmon_nl_ioctl_handler(struct sk_buff *skb)
             }
         }
         sdio_release_host(sdiodev->func1);
+
+        if (mpc_changed)
+            (void)brcmf_fil_iovar_int_set(target_ifp, "mpc", saved_mpc);
 
         if (ret) {
             netlink_ack(skb, nlh, ret < 0 ? ret : -ret, NULL);
@@ -790,10 +841,24 @@ nexmon_nl_ioctl_handler(struct sk_buff *skb)
             goto out_put;
         }
 
-        if (sdiodev->bus)
-            brcmf_sdio_sleep(sdiodev->bus, false);
+        /* D11 register access needs a clocked core. The firmware powers the
+         * core down when idle (mpc=1), which makes the backplane access fail
+         * or hang. Disable mpc for the duration of the access and restore it
+         * afterwards. */
+        u32 saved_mpc = 0;
+        u32 mpc_changed = 0;
+        if (brcmf_fil_iovar_int_get(target_ifp, "mpc", &saved_mpc) == 0 &&
+            saved_mpc) {
+            if (brcmf_fil_iovar_int_set(target_ifp, "mpc", 0) == 0)
+                mpc_changed = 1;
+        }
 
         sdio_claim_host(sdiodev->func1);
+        if (sdiodev->bus)
+            brcmf_sdio_wake(sdiodev->bus);
+        /* Force the backplane window to be reprogrammed: the cached value
+         * may predate the clock/power transition above. */
+        sdiodev->sbwad = 0;
         if (req.method == 1) {
             /* Direct backplane write */
             u32 base_addr = D11_TEMPLATE_RAM_BASE + (req.offset & 0x7FC);
@@ -815,6 +880,9 @@ nexmon_nl_ioctl_handler(struct sk_buff *skb)
             }
         }
         sdio_release_host(sdiodev->func1);
+
+        if (mpc_changed)
+            (void)brcmf_fil_iovar_int_set(target_ifp, "mpc", saved_mpc);
 
         if (ret) {
             netlink_ack(skb, nlh, ret < 0 ? ret : -ret, NULL);
